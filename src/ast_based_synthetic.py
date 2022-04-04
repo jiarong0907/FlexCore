@@ -1,7 +1,11 @@
+import argparse
+import pickle
 import sys
 import networkx as nx
 import matplotlib.pyplot as plt
 import random
+
+import json_to_nxGraph
 
 class ExecutionNode:
 	def __init__(self, name, id, myId, parent_block):
@@ -17,7 +21,6 @@ class ExecutionNode:
 			else:
 				return self.parent_block.parent_cond.rec_find_parent_next_myId(prefix)
 		else:
-			# print("Kuofeng: the next node found in the same block:", self.id, n.id)
 			return n.myId
 class Block:
 	def __init__(self, parent_cond, block_type, exec_list):
@@ -181,7 +184,7 @@ class Program:
 		stack = [edge]
 		while len(stack) != 0:
 			edge = stack[-1]
-			print("Edge", edge, len(stack), len(edge2covered))
+			# print("Edge", edge, len(stack), len(edge2covered))
 			dstMyId = graph.nodes[edge[1]]['myId']
 			if dstMyId[0] == "t":
 				next_edges = list(graph.edges(edge[1]))
@@ -521,13 +524,13 @@ class Program:
 			target = random.randint(0, 99)
 			if target < add_table_thr:
 				prev = self.get_random_node_with_dummy(p4_file)
-				self.add_table_after(prev, silent = False, p4_file = p4_file)
+				self.add_table_after(prev, silent = True, p4_file = p4_file)
 			elif target < add_cond_thr:
 				subblock_size = 0
 				while subblock_size < 1:
 					n = self.get_random_node_with_dummy(p4_file)
 					start_id, subblock_size = n.parent_block.get_random_subblock(edit_subblock_cap)
-				self.add_cond_at(n.parent_block, start_id, subblock_size, silent = False, p4_file = p4_file)
+				self.add_cond_at(n.parent_block, start_id, subblock_size, silent = True, p4_file = p4_file)
 			elif target < replace_thr:
 				first_time = True
 				while first_time or \
@@ -608,7 +611,7 @@ class Program:
 		self.idCount = prog.idCount
 		cond = parent_block.parent_cond
 		parent_id = 0 if cond == None else cond.id
-		print("replace", parent_id, list(map(lambda x: x.id, to_del)), "with", list(map(lambda x: x.id, to_add)))
+		# print("replace", parent_id, list(map(lambda x: x.id, to_del)), "with", list(map(lambda x: x.id, to_add)))
 
 	def swap(self, parent_block1, start_id1, subblock_size1, parent_block2, start_id2, subblock_size2):
 		list2 = parent_block2.remove_sublist(start_id2, subblock_size2)
@@ -623,8 +626,8 @@ class Program:
 		cond2 = parent_block2.parent_cond
 		parent_id1 = 0 if cond1 == None else cond1.id
 		parent_id2 = 0 if cond2 == None else cond2.id
-		print("swap", parent_id1, parent_block1.block_type, start_id1, list(map(lambda x: x.id, list1)),
-			"and", parent_id2, parent_block2.block_type, start_id2, list(map(lambda x: x.id, list2)))
+		# print("swap", parent_id1, parent_block1.block_type, start_id1, list(map(lambda x: x.id, list1)),
+		# 	"and", parent_id2, parent_block2.block_type, start_id2, list(map(lambda x: x.id, list2)))
 
 def gen_synthetic_prog_pair(init_prog_size = 10,
 			init_table_ratio = 50,
@@ -719,9 +722,169 @@ def gen_prog_pair_from_graph(graph, prefix,
 	# print("Graph visualization output after edited")
 	return (graph1, graph2)
 
+def _configure() -> argparse.Namespace:
+	"""Sets up arg parser"""
+	parser = argparse.ArgumentParser()
+	parser.add_argument(
+		"-j",
+		dest="initial_json",
+		default=None,
+		help=(
+			"The initial json file. "
+			"If provided, the pair of programs output will be the "
+			"initial json itself and the randomly edited program; "
+			"if not provided, both the initial program and the "
+			"edited program will be randomly generated."
+		),
+	)
+	parser.add_argument(
+		"-o",
+		dest="output_prefix",
+		required=True,
+		help=(
+			"The prefix for the output files. "
+			"There are two output files. Both will have prefix "
+			"specified by this parameter, i.e., "
+			"<output_prefix>_old.graph and "
+			"<output_prefix>_new.graph."
+		),
+	)
+	parser.add_argument(
+		"-ip",
+		dest="init_prog_size",
+		type=int,
+		default=10,
+		help=(
+			"The initial program size (also the program size when "
+			"adding a new code snippet during editing). Default: 10"
+		),
+	)
+	parser.add_argument(
+		"-it",
+		dest="init_table_ratio",
+		type=int,
+		default=50,
+		help=(
+			"The initial ratio for table nodes (also the table "
+			"ratio when adding a new code snippet during editing). "
+			"Default: 50. "
+			"The conditional nodes are the remaining nodes. 50 for 50%%."
+		),
+	)
+	parser.add_argument(
+		"-is",
+		dest="init_subblock_cap",
+		type=int,
+		default=3,
+		help=(
+			"The maximum size a subblock can contain when defining "
+			"conditional node branches for the initial program "
+			"(also the subblock cap when adding a new code snippet "
+			"during editing). Default: 3"
+		),
+	)
+	parser.add_argument(
+		"-e",
+		dest="edit_times",
+		type=int,
+		default=100,
+		help=(
+			"The number of edits done on the intial program. "
+			"Default: 100"
+		),
+	)
+	parser.add_argument(
+		"-at",
+		dest="add_table_ratio",
+		type=int,
+		default=50,
+		help=(
+			"The ratio of table addition among all edits. Default: 50. "
+			"50 for 50%%"
+		),
+	)
+	parser.add_argument(
+		"-ac",
+		dest="add_cond_ratio",
+		type=int,
+		default=0,
+		help=(
+			"The ratio of conditional node addition among all "
+			"edits. Default: 0. "
+			"50 for 50%%"
+		),
+	)
+	parser.add_argument(
+		"-r",
+		dest="replace_ratio",
+		type=int,
+		default=45,
+		help=(
+			"The ratio of code snippet relacement among all edits. "
+			"Default: 45. "
+			"This remaining edits will be swapping two subblocks. "
+			"50 for 50%%"
+		),
+	)
+	parser.add_argument(
+		"-rc",
+		dest="replace_prog_cap",
+		type=int,
+		default=3,
+		help=(
+			"The maximum program size for the new code snippet used "
+			"to replace the old code snippet for the \"code snippet "
+			"replacement\" edits.  Default: 3"
+		),
+	)
+	parser.add_argument(
+		"-es",
+		dest="edit_subblock_cap",
+		type=int,
+		default=3,
+		help=(
+			"The maximum program size when selecting the old code "
+			"snippet to edit for the \"code snippet replacement\" "
+			"edits and the \"swap\" edits. Default: 3"
+		),
+	)
+	return parser.parse_args()
 
-def main():
-	gen_synthetic_prog_pair()
+def main(args: argparse.Namespace) -> None:
+	"""The main program"""
+	output_prefix = args.output_prefix
+	if args.initial_json:
+		initial_json = args.initial_json
+		graph = json_to_nxGraph.json_to_nxGraph(args.initial_json, '')
+		g1, g2 = gen_prog_pair_from_graph(
+			graph,
+			'',
+			init_table_ratio=args.init_table_ratio, 
+			init_subblock_cap=args.init_subblock_cap,
+			edit_times=args.edit_times,
+			add_table_ratio=args.add_table_ratio,
+			add_cond_ratio=args.add_cond_ratio,
+			replace_ratio=args.replace_ratio,
+			replace_prog_cap=args.replace_prog_cap,
+			edit_subblock_cap=args.edit_subblock_cap,
+			# p4_file = "multicast.p4",  # This is to specify a single p4 subprogram to edit
+		)
+	else:
+		g1, g2 = gen_synthetic_prog_pair(
+			init_prog_size=args.init_prog_size,
+			init_table_ratio=args.init_table_ratio, 
+			init_subblock_cap=args.init_subblock_cap,
+			edit_times=args.edit_times,
+			add_table_ratio=args.add_table_ratio,
+			add_cond_ratio=args.add_cond_ratio,
+			replace_ratio=args.replace_ratio,
+			replace_prog_cap=args.replace_prog_cap,
+			edit_subblock_cap=args.edit_subblock_cap,
+		)
+
+	pickle.dump(g1, open(f'{args.output_prefix}_old.graph', 'wb'))
+	pickle.dump(g2, open(f'{args.output_prefix}_new.graph', 'wb'))
 
 if __name__ == "__main__":
-	main()
+	main(_configure())
+
