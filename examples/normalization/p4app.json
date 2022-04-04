@@ -1,0 +1,45 @@
+
+{
+  "language": "p4-16",
+  "targets": {
+    "multiswitch": {
+      "auto-control-plane": true,
+      "cli": true,
+      "pcap_dump": false,
+      "bmv2_log": true,
+      "NUM_END_HOSTS": "2",
+      "links": [["h1", "s1"],["h2", "s1"]],
+      "hosts": {
+        "h1": {"server": "0"},
+        "h2": {"server": "0"}
+      },
+      "switches": {
+        "s1": {
+          "entries": "s1-commands.txt", 
+          "server": "0"
+        }
+      },
+      "configs": {
+        "s1": "normalization_old.p4"
+      },
+      "servers": ["localhost"],
+      "before": {
+        "cmd": [
+          ["h1", "ip route add 10.0.1.10 dev h1-eth0"],
+          ["h1", "arp -s 10.0.1.10 00:04:00:00:00:01"],
+          ["h1", "ip route add 10.0.1.21 dev h1-eth0"],
+          ["h1", "arp -s 10.0.1.21 00:04:00:00:00:02"],
+          ["h2", "ip route add 10.0.1.10 dev h2-eth0"],
+          ["h2", "arp -s 10.0.1.10 00:04:00:00:00:01"],
+          ["h2", "ip route add 10.0.1.21 dev h2-eth0"],
+          ["h2", "arp -s 10.0.1.21 00:04:00:00:00:02"],
+          ["h1", "rm received.txt"],
+          ["h1", "python ./receive.py 10.0.1.10 >> received.txt &"],
+          ["h2", "python ./receive.py 10.0.1.21 >> received.txt &"],
+          ["h2", "python ./send.py 10.0.1.255 xx &"],
+          ["h1", "python ./send.py 10.0.1.21 xx &"]
+        ]
+      }
+    }
+  }
+}

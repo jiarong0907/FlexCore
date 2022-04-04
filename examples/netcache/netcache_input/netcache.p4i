@@ -1,0 +1,658 @@
+# 1 "netcache.p4"
+# 1 "<built-in>"
+# 1 "<command-line>"
+# 1 "netcache.p4"
+# 1 "includes/defines.p4" 1
+# 2 "netcache.p4" 2
+# 1 "includes/headers.p4" 1
+header_type ethernet_t {
+    fields {
+        dstAddr : 48;
+        srcAddr : 48;
+        etherType : 16;
+    }
+}
+header ethernet_t ethernet;
+
+header_type ipv4_t {
+    fields {
+        version : 4;
+        ihl : 4;
+        diffserv : 8;
+        totalLen : 16;
+        identification : 16;
+        flags : 3;
+        fragOffset : 13;
+        ttl : 8;
+        protocol : 8;
+        hdrChecksum : 16;
+        srcAddr : 32;
+        dstAddr: 32;
+    }
+}
+header ipv4_t ipv4;
+
+header_type tcp_t {
+    fields {
+        srcPort : 16;
+        dstPort : 16;
+        seqNo : 32;
+        ackNo : 32;
+        dataOffset : 4;
+        res : 3;
+        ecn : 3;
+        ctrl : 6;
+        window : 16;
+        checksum : 16;
+        urgentPtr : 16;
+    }
+}
+header tcp_t tcp;
+
+header_type udp_t {
+    fields {
+        srcPort : 16;
+        dstPort : 16;
+        len : 16;
+        checksum : 16;
+    }
+}
+header udp_t udp;
+
+header_type nc_hdr_t {
+    fields {
+        op: 8;
+        key: 128;
+    }
+}
+header nc_hdr_t nc_hdr;
+
+header_type nc_load_t {
+    fields {
+        load_1: 32;
+        load_2: 32;
+        load_3: 32;
+        load_4: 32;
+    }
+}
+header nc_load_t nc_load;
+
+/*
+    The headers for value are defined in value.p4
+    k = 1, 2, ..., 8
+    header_type nc_value_{k}_t {
+        fields {
+            value_{k}_1: 32;
+            value_{k}_2: 32;
+            value_{k}_3: 32;
+            value_{k}_4: 32;
+        }
+    }
+*/
+# 3 "netcache.p4" 2
+# 1 "includes/parsers.p4" 1
+parser start {
+    return parse_ethernet;
+}
+
+
+parser parse_ethernet {
+    extract (ethernet);
+    return select (latest.etherType) {
+        0x0800: parse_ipv4;
+        default: ingress;
+    }
+}
+
+
+
+parser parse_ipv4 {
+    extract(ipv4);
+    return select (latest.protocol) {
+        6: parse_tcp;
+        17: parse_udp;
+        default: ingress;
+    }
+}
+
+parser parse_tcp {
+    extract (tcp);
+    return ingress;
+}
+
+parser parse_udp {
+    extract (udp);
+    return select (latest.dstPort) {
+        8888: parse_nc_hdr;
+        default: ingress;
+    }
+}
+
+parser parse_nc_hdr {
+    extract (nc_hdr);
+    return select(latest.op) {
+        0: ingress;
+        1: parse_value;
+        2: parse_nc_load;
+        8: ingress;
+        9: parse_value;
+        default: ingress;
+    }
+}
+
+parser parse_nc_load {
+    extract (nc_load);
+    return ingress;
+}
+
+parser parse_value {
+    return parse_nc_value_1;
+}
+
+/*
+    The parsers for value headers are defined in value.p4
+    k = 1, 2, ..., 8
+    parser parse_value_{k} {
+        extract (nc_value_{k});
+        return select(k) {
+            8: ingress;
+            default: parse_value_{k + 1};
+        }
+    }
+*/
+# 4 "netcache.p4" 2
+# 1 "includes/checksum.p4" 1
+field_list ipv4_field_list {
+    ipv4.version;
+    ipv4.ihl;
+    ipv4.diffserv;
+    ipv4.totalLen;
+    ipv4.identification;
+    ipv4.flags;
+    ipv4.fragOffset;
+    ipv4.ttl;
+    ipv4.protocol;
+    ipv4.srcAddr;
+    ipv4.dstAddr;
+}
+field_list_calculation ipv4_chksum_calc {
+    input {
+        ipv4_field_list;
+    }
+    algorithm : csum16;
+    output_width: 16;
+}
+calculated_field ipv4.hdrChecksum {
+    update ipv4_chksum_calc;
+}
+
+field_list udp_checksum_list {
+    // IPv4 Pseudo Header Format. Must modify for IPv6 support.
+    ipv4.srcAddr;
+    ipv4.dstAddr;
+    8'0;
+    ipv4.protocol;
+    udp.len;
+    udp.srcPort;
+    udp.dstPort;
+    udp.len;
+    // udp.checksum;
+    payload;
+}
+field_list_calculation udp_checksum {
+    input {
+        udp_checksum_list;
+    }
+    algorithm : csum16;
+    output_width : 16;
+}
+calculated_field udp.checksum {
+    update udp_checksum;
+}
+# 5 "netcache.p4" 2
+
+# 1 "cache.p4" 1
+header_type nc_cache_md_t {
+    fields {
+        cache_exist: 1;
+        cache_index: 14;
+        cache_valid: 1;
+    }
+}
+metadata nc_cache_md_t nc_cache_md;
+
+
+action check_cache_exist_act(index) {
+    modify_field (nc_cache_md.cache_exist, 1);
+    modify_field (nc_cache_md.cache_index, index);
+}
+table check_cache_exist {
+    reads {
+        nc_hdr.key: exact;
+    }
+    actions {
+        check_cache_exist_act;
+    }
+    size: 128;
+}
+
+
+register cache_valid_reg {
+    width: 1;
+    instance_count: 128;
+}
+
+action check_cache_valid_act() {
+    register_read(nc_cache_md.cache_valid, cache_valid_reg, nc_cache_md.cache_index);
+}
+table check_cache_valid {
+    actions {
+        check_cache_valid_act;
+    }
+    //default_action: check_cache_valid_act;
+}
+
+action set_cache_valid_act() {
+    register_write(cache_valid_reg, nc_cache_md.cache_index, 1);
+}
+table set_cache_valid {
+    actions {
+        set_cache_valid_act;
+    }
+    //default_action: set_cache_valid_act;
+}
+
+control process_cache {
+    apply (check_cache_exist);
+    if (nc_cache_md.cache_exist == 1) {
+        if (nc_hdr.op == 0) {
+            apply (check_cache_valid);
+        }
+        else if (nc_hdr.op == 9) {
+            apply (set_cache_valid);
+        }
+    }
+}
+# 7 "netcache.p4" 2
+# 1 "heavy_hitter.p4" 1
+
+
+
+
+
+
+
+header_type nc_load_md_t {
+    fields {
+        index_1: 16;
+        index_2: 16;
+        index_3: 16;
+        index_4: 16;
+
+        load_1: 32;
+        load_2: 32;
+        load_3: 32;
+        load_4: 32;
+    }
+}
+metadata nc_load_md_t nc_load_md;
+
+field_list hh_hash_fields {
+    nc_hdr.key;
+}
+
+register hh_load_1_reg {
+    width: 32;
+    instance_count: 256;
+}
+field_list_calculation hh_load_1_hash {
+    input {
+        hh_hash_fields;
+    }
+    algorithm : crc32;
+    output_width : 8;
+}
+action hh_load_1_count_act() {
+    modify_field_with_hash_based_offset(nc_load_md.index_1, 0, hh_load_1_hash, 256);
+    register_read(nc_load_md.load_1, hh_load_1_reg, nc_load_md.index_1);
+    register_write(hh_load_1_reg, nc_load_md.index_1, nc_load_md.load_1 + 1);
+}
+table hh_load_1_count {
+    actions {
+        hh_load_1_count_act;
+    }
+}
+
+register hh_load_2_reg {
+    width: 32;
+    instance_count: 256;
+}
+field_list_calculation hh_load_2_hash {
+    input {
+        hh_hash_fields;
+    }
+    algorithm : csum16;
+    output_width : 8;
+}
+action hh_load_2_count_act() {
+    modify_field_with_hash_based_offset(nc_load_md.index_2, 0, hh_load_2_hash, 256);
+    register_read(nc_load_md.load_2, hh_load_2_reg, nc_load_md.index_2);
+    register_write(hh_load_2_reg, nc_load_md.index_2, nc_load_md.load_2 + 1);
+}
+table hh_load_2_count {
+    actions {
+        hh_load_2_count_act;
+    }
+}
+
+register hh_load_3_reg {
+    width: 32;
+    instance_count: 256;
+}
+field_list_calculation hh_load_3_hash {
+    input {
+        hh_hash_fields;
+    }
+    algorithm : crc16;
+    output_width : 8;
+}
+action hh_load_3_count_act() {
+    modify_field_with_hash_based_offset(nc_load_md.index_3, 0, hh_load_3_hash, 256);
+    register_read(nc_load_md.load_3, hh_load_3_reg, nc_load_md.index_3);
+    register_write(hh_load_3_reg, nc_load_md.index_3, nc_load_md.load_3 + 1);
+}
+table hh_load_3_count {
+    actions {
+        hh_load_3_count_act;
+    }
+}
+
+register hh_load_4_reg {
+    width: 32;
+    instance_count: 256;
+}
+field_list_calculation hh_load_4_hash {
+    input {
+        hh_hash_fields;
+    }
+    algorithm : crc32;
+    output_width : 8;
+}
+action hh_load_4_count_act() {
+    modify_field_with_hash_based_offset(nc_load_md.index_4, 0, hh_load_4_hash, 256);
+    register_read(nc_load_md.load_4, hh_load_4_reg, nc_load_md.index_4);
+    register_write(hh_load_4_reg, nc_load_md.index_4, nc_load_md.load_4 + 1);
+}
+table hh_load_4_count {
+    actions {
+        hh_load_4_count_act;
+    }
+}
+
+control count_min {
+    apply (hh_load_1_count);
+    apply (hh_load_2_count);
+    apply (hh_load_3_count);
+    apply (hh_load_4_count);
+}
+
+header_type hh_bf_md_t {
+    fields {
+        index_1: 16;
+        index_2: 16;
+        index_3: 16;
+
+        bf_1: 1;
+        bf_2: 1;
+        bf_3: 1;
+    }
+}
+metadata hh_bf_md_t hh_bf_md;
+
+register hh_bf_1_reg {
+    width: 1;
+    instance_count: 512;
+}
+field_list_calculation hh_bf_1_hash {
+    input {
+        hh_hash_fields;
+    }
+    algorithm : crc32;
+    output_width : 9;
+}
+action hh_bf_1_act() {
+    modify_field_with_hash_based_offset(hh_bf_md.index_1, 0, hh_bf_1_hash, 512);
+    register_read(hh_bf_md.bf_1, hh_bf_1_reg, hh_bf_md.index_1);
+    register_write(hh_bf_1_reg, hh_bf_md.index_1, 1);
+}
+table hh_bf_1 {
+    actions {
+        hh_bf_1_act;
+    }
+}
+
+register hh_bf_2_reg {
+    width: 1;
+    instance_count: 512;
+}
+field_list_calculation hh_bf_2_hash {
+    input {
+        hh_hash_fields;
+    }
+    algorithm : csum16;
+    output_width : 9;
+}
+action hh_bf_2_act() {
+    modify_field_with_hash_based_offset(hh_bf_md.index_2, 0, hh_bf_2_hash, 512);
+    register_read(hh_bf_md.bf_2, hh_bf_2_reg, hh_bf_md.index_2);
+    register_write(hh_bf_2_reg, hh_bf_md.index_2, 1);
+}
+table hh_bf_2 {
+    actions {
+        hh_bf_2_act;
+    }
+}
+
+register hh_bf_3_reg {
+    width: 1;
+    instance_count: 512;
+}
+field_list_calculation hh_bf_3_hash {
+    input {
+        hh_hash_fields;
+    }
+    algorithm : crc16;
+    output_width : 9;
+}
+action hh_bf_3_act() {
+    modify_field_with_hash_based_offset(hh_bf_md.index_3, 0, hh_bf_3_hash, 512);
+    register_read(hh_bf_md.bf_3, hh_bf_3_reg, hh_bf_md.index_3);
+    register_write(hh_bf_3_reg, hh_bf_md.index_3, 1);
+}
+table hh_bf_3 {
+    actions {
+        hh_bf_3_act;
+    }
+}
+
+control bloom_filter {
+    apply (hh_bf_1);
+    apply (hh_bf_2);
+    apply (hh_bf_3);
+}
+
+field_list mirror_list {
+    nc_load_md.load_1;
+    nc_load_md.load_2;
+    nc_load_md.load_3;
+    nc_load_md.load_4;
+}
+
+
+action clone_to_controller_act() {
+    clone_egress_pkt_to_egress(3);
+    // clone_egress_pkt_to_egress(CONTROLLER_MIRROR_DSET, mirror_list);
+}
+
+table clone_to_controller {
+    actions {
+        clone_to_controller_act;
+    }
+}
+
+control report_hot_step_1 {
+    apply (clone_to_controller);
+}
+
+
+action report_hot_act() {
+    modify_field (nc_hdr.op, 2);
+
+    add_header (nc_load);
+    add_to_field(ipv4.totalLen, 16);
+    add_to_field(udp.len, 16);
+    modify_field (nc_load.load_1, nc_load_md.load_1);
+    modify_field (nc_load.load_2, nc_load_md.load_2);
+    modify_field (nc_load.load_3, nc_load_md.load_3);
+    modify_field (nc_load.load_4, nc_load_md.load_4);
+
+    modify_field (ipv4.dstAddr, 0x0a000003);
+}
+
+table report_hot {
+    actions {
+        report_hot_act;
+    }
+}
+
+control report_hot_step_2 {
+    apply (report_hot);
+}
+
+control heavy_hitter {
+    if (standard_metadata.instance_type == 0) {
+        count_min();
+        if (nc_load_md.load_1 > 128) {
+            if (nc_load_md.load_2 > 128) {
+                if (nc_load_md.load_3 > 128) {
+                    if (nc_load_md.load_4 > 128) {
+                        bloom_filter();
+                        if (hh_bf_md.bf_1 == 0 or hh_bf_md.bf_2 == 0 or hh_bf_md.bf_3 == 0){
+                            report_hot_step_1();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    else {
+        report_hot_step_2();
+    }
+}
+# 8 "netcache.p4" 2
+# 1 "value.p4" 1
+# 143 "value.p4"
+header_type nc_value_1_t { fields { value_1_1: 32; value_1_2: 32; value_1_3: 32; value_1_4: 32; } } header nc_value_1_t nc_value_1; parser parse_nc_value_1 { extract (nc_value_1); return parse_nc_value_2; } register value_1_1_reg { width: 32; instance_count: 128; } register value_1_2_reg { width: 32; instance_count: 128; } register value_1_3_reg { width: 32; instance_count: 128; } register value_1_4_reg { width: 32; instance_count: 128; } action read_value_1_1_act() { register_read(nc_value_1.value_1_1, value_1_1_reg, nc_cache_md.cache_index); } action read_value_1_2_act() { register_read(nc_value_1.value_1_2, value_1_2_reg, nc_cache_md.cache_index); } action read_value_1_3_act() { register_read(nc_value_1.value_1_3, value_1_3_reg, nc_cache_md.cache_index); } action read_value_1_4_act() { register_read(nc_value_1.value_1_4, value_1_4_reg, nc_cache_md.cache_index); } table read_value_1_1 { actions { read_value_1_1_act; } } table read_value_1_2 { actions { read_value_1_2_act; } } table read_value_1_3 { actions { read_value_1_3_act; } } table read_value_1_4 { actions { read_value_1_4_act; } } action add_value_header_1_act() { add_to_field(ipv4.totalLen, 16); add_to_field(udp.len, 16); add_header(nc_value_1); } table add_value_header_1 { actions { add_value_header_1_act; } } action write_value_1_1_act() { register_write(value_1_1_reg, nc_cache_md.cache_index, nc_value_1.value_1_1); } action write_value_1_2_act() { register_write(value_1_2_reg, nc_cache_md.cache_index, nc_value_1.value_1_2); } action write_value_1_3_act() { register_write(value_1_3_reg, nc_cache_md.cache_index, nc_value_1.value_1_3); } action write_value_1_4_act() { register_write(value_1_4_reg, nc_cache_md.cache_index, nc_value_1.value_1_4); } table write_value_1_1 { actions { write_value_1_1_act; } } table write_value_1_2 { actions { write_value_1_2_act; } } table write_value_1_3 { actions { write_value_1_3_act; } } table write_value_1_4 { actions { write_value_1_4_act; } } action remove_value_header_1_act() { subtract_from_field(ipv4.totalLen, 16); subtract_from_field(udp.len, 16); remove_header(nc_value_1); } table remove_value_header_1 { actions { remove_value_header_1_act; } } control process_value_1 { if (nc_hdr.op == 0 and nc_cache_md.cache_valid == 1) { apply (add_value_header_1); apply (read_value_1_1); apply (read_value_1_2); apply (read_value_1_3); apply (read_value_1_4); } else if (nc_hdr.op == 9 and nc_cache_md.cache_exist == 1) { apply (write_value_1_1); apply (write_value_1_2); apply (write_value_1_3); apply (write_value_1_4); apply (remove_value_header_1); } }
+header_type nc_value_2_t { fields { value_2_1: 32; value_2_2: 32; value_2_3: 32; value_2_4: 32; } } header nc_value_2_t nc_value_2; parser parse_nc_value_2 { extract (nc_value_2); return parse_nc_value_3; } register value_2_1_reg { width: 32; instance_count: 128; } register value_2_2_reg { width: 32; instance_count: 128; } register value_2_3_reg { width: 32; instance_count: 128; } register value_2_4_reg { width: 32; instance_count: 128; } action read_value_2_1_act() { register_read(nc_value_2.value_2_1, value_2_1_reg, nc_cache_md.cache_index); } action read_value_2_2_act() { register_read(nc_value_2.value_2_2, value_2_2_reg, nc_cache_md.cache_index); } action read_value_2_3_act() { register_read(nc_value_2.value_2_3, value_2_3_reg, nc_cache_md.cache_index); } action read_value_2_4_act() { register_read(nc_value_2.value_2_4, value_2_4_reg, nc_cache_md.cache_index); } table read_value_2_1 { actions { read_value_2_1_act; } } table read_value_2_2 { actions { read_value_2_2_act; } } table read_value_2_3 { actions { read_value_2_3_act; } } table read_value_2_4 { actions { read_value_2_4_act; } } action add_value_header_2_act() { add_to_field(ipv4.totalLen, 16); add_to_field(udp.len, 16); add_header(nc_value_2); } table add_value_header_2 { actions { add_value_header_2_act; } } action write_value_2_1_act() { register_write(value_2_1_reg, nc_cache_md.cache_index, nc_value_2.value_2_1); } action write_value_2_2_act() { register_write(value_2_2_reg, nc_cache_md.cache_index, nc_value_2.value_2_2); } action write_value_2_3_act() { register_write(value_2_3_reg, nc_cache_md.cache_index, nc_value_2.value_2_3); } action write_value_2_4_act() { register_write(value_2_4_reg, nc_cache_md.cache_index, nc_value_2.value_2_4); } table write_value_2_1 { actions { write_value_2_1_act; } } table write_value_2_2 { actions { write_value_2_2_act; } } table write_value_2_3 { actions { write_value_2_3_act; } } table write_value_2_4 { actions { write_value_2_4_act; } } action remove_value_header_2_act() { subtract_from_field(ipv4.totalLen, 16); subtract_from_field(udp.len, 16); remove_header(nc_value_2); } table remove_value_header_2 { actions { remove_value_header_2_act; } } control process_value_2 { if (nc_hdr.op == 0 and nc_cache_md.cache_valid == 1) { apply (add_value_header_2); apply (read_value_2_1); apply (read_value_2_2); apply (read_value_2_3); apply (read_value_2_4); } else if (nc_hdr.op == 9 and nc_cache_md.cache_exist == 1) { apply (write_value_2_1); apply (write_value_2_2); apply (write_value_2_3); apply (write_value_2_4); apply (remove_value_header_2); } }
+header_type nc_value_3_t { fields { value_3_1: 32; value_3_2: 32; value_3_3: 32; value_3_4: 32; } } header nc_value_3_t nc_value_3; parser parse_nc_value_3 { extract (nc_value_3); return parse_nc_value_4; } register value_3_1_reg { width: 32; instance_count: 128; } register value_3_2_reg { width: 32; instance_count: 128; } register value_3_3_reg { width: 32; instance_count: 128; } register value_3_4_reg { width: 32; instance_count: 128; } action read_value_3_1_act() { register_read(nc_value_3.value_3_1, value_3_1_reg, nc_cache_md.cache_index); } action read_value_3_2_act() { register_read(nc_value_3.value_3_2, value_3_2_reg, nc_cache_md.cache_index); } action read_value_3_3_act() { register_read(nc_value_3.value_3_3, value_3_3_reg, nc_cache_md.cache_index); } action read_value_3_4_act() { register_read(nc_value_3.value_3_4, value_3_4_reg, nc_cache_md.cache_index); } table read_value_3_1 { actions { read_value_3_1_act; } } table read_value_3_2 { actions { read_value_3_2_act; } } table read_value_3_3 { actions { read_value_3_3_act; } } table read_value_3_4 { actions { read_value_3_4_act; } } action add_value_header_3_act() { add_to_field(ipv4.totalLen, 16); add_to_field(udp.len, 16); add_header(nc_value_3); } table add_value_header_3 { actions { add_value_header_3_act; } } action write_value_3_1_act() { register_write(value_3_1_reg, nc_cache_md.cache_index, nc_value_3.value_3_1); } action write_value_3_2_act() { register_write(value_3_2_reg, nc_cache_md.cache_index, nc_value_3.value_3_2); } action write_value_3_3_act() { register_write(value_3_3_reg, nc_cache_md.cache_index, nc_value_3.value_3_3); } action write_value_3_4_act() { register_write(value_3_4_reg, nc_cache_md.cache_index, nc_value_3.value_3_4); } table write_value_3_1 { actions { write_value_3_1_act; } } table write_value_3_2 { actions { write_value_3_2_act; } } table write_value_3_3 { actions { write_value_3_3_act; } } table write_value_3_4 { actions { write_value_3_4_act; } } action remove_value_header_3_act() { subtract_from_field(ipv4.totalLen, 16); subtract_from_field(udp.len, 16); remove_header(nc_value_3); } table remove_value_header_3 { actions { remove_value_header_3_act; } } control process_value_3 { if (nc_hdr.op == 0 and nc_cache_md.cache_valid == 1) { apply (add_value_header_3); apply (read_value_3_1); apply (read_value_3_2); apply (read_value_3_3); apply (read_value_3_4); } else if (nc_hdr.op == 9 and nc_cache_md.cache_exist == 1) { apply (write_value_3_1); apply (write_value_3_2); apply (write_value_3_3); apply (write_value_3_4); apply (remove_value_header_3); } }
+header_type nc_value_4_t { fields { value_4_1: 32; value_4_2: 32; value_4_3: 32; value_4_4: 32; } } header nc_value_4_t nc_value_4; parser parse_nc_value_4 { extract (nc_value_4); return parse_nc_value_5; } register value_4_1_reg { width: 32; instance_count: 128; } register value_4_2_reg { width: 32; instance_count: 128; } register value_4_3_reg { width: 32; instance_count: 128; } register value_4_4_reg { width: 32; instance_count: 128; } action read_value_4_1_act() { register_read(nc_value_4.value_4_1, value_4_1_reg, nc_cache_md.cache_index); } action read_value_4_2_act() { register_read(nc_value_4.value_4_2, value_4_2_reg, nc_cache_md.cache_index); } action read_value_4_3_act() { register_read(nc_value_4.value_4_3, value_4_3_reg, nc_cache_md.cache_index); } action read_value_4_4_act() { register_read(nc_value_4.value_4_4, value_4_4_reg, nc_cache_md.cache_index); } table read_value_4_1 { actions { read_value_4_1_act; } } table read_value_4_2 { actions { read_value_4_2_act; } } table read_value_4_3 { actions { read_value_4_3_act; } } table read_value_4_4 { actions { read_value_4_4_act; } } action add_value_header_4_act() { add_to_field(ipv4.totalLen, 16); add_to_field(udp.len, 16); add_header(nc_value_4); } table add_value_header_4 { actions { add_value_header_4_act; } } action write_value_4_1_act() { register_write(value_4_1_reg, nc_cache_md.cache_index, nc_value_4.value_4_1); } action write_value_4_2_act() { register_write(value_4_2_reg, nc_cache_md.cache_index, nc_value_4.value_4_2); } action write_value_4_3_act() { register_write(value_4_3_reg, nc_cache_md.cache_index, nc_value_4.value_4_3); } action write_value_4_4_act() { register_write(value_4_4_reg, nc_cache_md.cache_index, nc_value_4.value_4_4); } table write_value_4_1 { actions { write_value_4_1_act; } } table write_value_4_2 { actions { write_value_4_2_act; } } table write_value_4_3 { actions { write_value_4_3_act; } } table write_value_4_4 { actions { write_value_4_4_act; } } action remove_value_header_4_act() { subtract_from_field(ipv4.totalLen, 16); subtract_from_field(udp.len, 16); remove_header(nc_value_4); } table remove_value_header_4 { actions { remove_value_header_4_act; } } control process_value_4 { if (nc_hdr.op == 0 and nc_cache_md.cache_valid == 1) { apply (add_value_header_4); apply (read_value_4_1); apply (read_value_4_2); apply (read_value_4_3); apply (read_value_4_4); } else if (nc_hdr.op == 9 and nc_cache_md.cache_exist == 1) { apply (write_value_4_1); apply (write_value_4_2); apply (write_value_4_3); apply (write_value_4_4); apply (remove_value_header_4); } }
+header_type nc_value_5_t { fields { value_5_1: 32; value_5_2: 32; value_5_3: 32; value_5_4: 32; } } header nc_value_5_t nc_value_5; parser parse_nc_value_5 { extract (nc_value_5); return parse_nc_value_6; } register value_5_1_reg { width: 32; instance_count: 128; } register value_5_2_reg { width: 32; instance_count: 128; } register value_5_3_reg { width: 32; instance_count: 128; } register value_5_4_reg { width: 32; instance_count: 128; } action read_value_5_1_act() { register_read(nc_value_5.value_5_1, value_5_1_reg, nc_cache_md.cache_index); } action read_value_5_2_act() { register_read(nc_value_5.value_5_2, value_5_2_reg, nc_cache_md.cache_index); } action read_value_5_3_act() { register_read(nc_value_5.value_5_3, value_5_3_reg, nc_cache_md.cache_index); } action read_value_5_4_act() { register_read(nc_value_5.value_5_4, value_5_4_reg, nc_cache_md.cache_index); } table read_value_5_1 { actions { read_value_5_1_act; } } table read_value_5_2 { actions { read_value_5_2_act; } } table read_value_5_3 { actions { read_value_5_3_act; } } table read_value_5_4 { actions { read_value_5_4_act; } } action add_value_header_5_act() { add_to_field(ipv4.totalLen, 16); add_to_field(udp.len, 16); add_header(nc_value_5); } table add_value_header_5 { actions { add_value_header_5_act; } } action write_value_5_1_act() { register_write(value_5_1_reg, nc_cache_md.cache_index, nc_value_5.value_5_1); } action write_value_5_2_act() { register_write(value_5_2_reg, nc_cache_md.cache_index, nc_value_5.value_5_2); } action write_value_5_3_act() { register_write(value_5_3_reg, nc_cache_md.cache_index, nc_value_5.value_5_3); } action write_value_5_4_act() { register_write(value_5_4_reg, nc_cache_md.cache_index, nc_value_5.value_5_4); } table write_value_5_1 { actions { write_value_5_1_act; } } table write_value_5_2 { actions { write_value_5_2_act; } } table write_value_5_3 { actions { write_value_5_3_act; } } table write_value_5_4 { actions { write_value_5_4_act; } } action remove_value_header_5_act() { subtract_from_field(ipv4.totalLen, 16); subtract_from_field(udp.len, 16); remove_header(nc_value_5); } table remove_value_header_5 { actions { remove_value_header_5_act; } } control process_value_5 { if (nc_hdr.op == 0 and nc_cache_md.cache_valid == 1) { apply (add_value_header_5); apply (read_value_5_1); apply (read_value_5_2); apply (read_value_5_3); apply (read_value_5_4); } else if (nc_hdr.op == 9 and nc_cache_md.cache_exist == 1) { apply (write_value_5_1); apply (write_value_5_2); apply (write_value_5_3); apply (write_value_5_4); apply (remove_value_header_5); } }
+header_type nc_value_6_t { fields { value_6_1: 32; value_6_2: 32; value_6_3: 32; value_6_4: 32; } } header nc_value_6_t nc_value_6; parser parse_nc_value_6 { extract (nc_value_6); return parse_nc_value_7; } register value_6_1_reg { width: 32; instance_count: 128; } register value_6_2_reg { width: 32; instance_count: 128; } register value_6_3_reg { width: 32; instance_count: 128; } register value_6_4_reg { width: 32; instance_count: 128; } action read_value_6_1_act() { register_read(nc_value_6.value_6_1, value_6_1_reg, nc_cache_md.cache_index); } action read_value_6_2_act() { register_read(nc_value_6.value_6_2, value_6_2_reg, nc_cache_md.cache_index); } action read_value_6_3_act() { register_read(nc_value_6.value_6_3, value_6_3_reg, nc_cache_md.cache_index); } action read_value_6_4_act() { register_read(nc_value_6.value_6_4, value_6_4_reg, nc_cache_md.cache_index); } table read_value_6_1 { actions { read_value_6_1_act; } } table read_value_6_2 { actions { read_value_6_2_act; } } table read_value_6_3 { actions { read_value_6_3_act; } } table read_value_6_4 { actions { read_value_6_4_act; } } action add_value_header_6_act() { add_to_field(ipv4.totalLen, 16); add_to_field(udp.len, 16); add_header(nc_value_6); } table add_value_header_6 { actions { add_value_header_6_act; } } action write_value_6_1_act() { register_write(value_6_1_reg, nc_cache_md.cache_index, nc_value_6.value_6_1); } action write_value_6_2_act() { register_write(value_6_2_reg, nc_cache_md.cache_index, nc_value_6.value_6_2); } action write_value_6_3_act() { register_write(value_6_3_reg, nc_cache_md.cache_index, nc_value_6.value_6_3); } action write_value_6_4_act() { register_write(value_6_4_reg, nc_cache_md.cache_index, nc_value_6.value_6_4); } table write_value_6_1 { actions { write_value_6_1_act; } } table write_value_6_2 { actions { write_value_6_2_act; } } table write_value_6_3 { actions { write_value_6_3_act; } } table write_value_6_4 { actions { write_value_6_4_act; } } action remove_value_header_6_act() { subtract_from_field(ipv4.totalLen, 16); subtract_from_field(udp.len, 16); remove_header(nc_value_6); } table remove_value_header_6 { actions { remove_value_header_6_act; } } control process_value_6 { if (nc_hdr.op == 0 and nc_cache_md.cache_valid == 1) { apply (add_value_header_6); apply (read_value_6_1); apply (read_value_6_2); apply (read_value_6_3); apply (read_value_6_4); } else if (nc_hdr.op == 9 and nc_cache_md.cache_exist == 1) { apply (write_value_6_1); apply (write_value_6_2); apply (write_value_6_3); apply (write_value_6_4); apply (remove_value_header_6); } }
+header_type nc_value_7_t { fields { value_7_1: 32; value_7_2: 32; value_7_3: 32; value_7_4: 32; } } header nc_value_7_t nc_value_7; parser parse_nc_value_7 { extract (nc_value_7); return parse_nc_value_8; } register value_7_1_reg { width: 32; instance_count: 128; } register value_7_2_reg { width: 32; instance_count: 128; } register value_7_3_reg { width: 32; instance_count: 128; } register value_7_4_reg { width: 32; instance_count: 128; } action read_value_7_1_act() { register_read(nc_value_7.value_7_1, value_7_1_reg, nc_cache_md.cache_index); } action read_value_7_2_act() { register_read(nc_value_7.value_7_2, value_7_2_reg, nc_cache_md.cache_index); } action read_value_7_3_act() { register_read(nc_value_7.value_7_3, value_7_3_reg, nc_cache_md.cache_index); } action read_value_7_4_act() { register_read(nc_value_7.value_7_4, value_7_4_reg, nc_cache_md.cache_index); } table read_value_7_1 { actions { read_value_7_1_act; } } table read_value_7_2 { actions { read_value_7_2_act; } } table read_value_7_3 { actions { read_value_7_3_act; } } table read_value_7_4 { actions { read_value_7_4_act; } } action add_value_header_7_act() { add_to_field(ipv4.totalLen, 16); add_to_field(udp.len, 16); add_header(nc_value_7); } table add_value_header_7 { actions { add_value_header_7_act; } } action write_value_7_1_act() { register_write(value_7_1_reg, nc_cache_md.cache_index, nc_value_7.value_7_1); } action write_value_7_2_act() { register_write(value_7_2_reg, nc_cache_md.cache_index, nc_value_7.value_7_2); } action write_value_7_3_act() { register_write(value_7_3_reg, nc_cache_md.cache_index, nc_value_7.value_7_3); } action write_value_7_4_act() { register_write(value_7_4_reg, nc_cache_md.cache_index, nc_value_7.value_7_4); } table write_value_7_1 { actions { write_value_7_1_act; } } table write_value_7_2 { actions { write_value_7_2_act; } } table write_value_7_3 { actions { write_value_7_3_act; } } table write_value_7_4 { actions { write_value_7_4_act; } } action remove_value_header_7_act() { subtract_from_field(ipv4.totalLen, 16); subtract_from_field(udp.len, 16); remove_header(nc_value_7); } table remove_value_header_7 { actions { remove_value_header_7_act; } } control process_value_7 { if (nc_hdr.op == 0 and nc_cache_md.cache_valid == 1) { apply (add_value_header_7); apply (read_value_7_1); apply (read_value_7_2); apply (read_value_7_3); apply (read_value_7_4); } else if (nc_hdr.op == 9 and nc_cache_md.cache_exist == 1) { apply (write_value_7_1); apply (write_value_7_2); apply (write_value_7_3); apply (write_value_7_4); apply (remove_value_header_7); } }
+header_type nc_value_8_t { fields { value_8_1: 32; value_8_2: 32; value_8_3: 32; value_8_4: 32; } } header nc_value_8_t nc_value_8; parser parse_nc_value_8 { extract (nc_value_8); return parse_nc_value_9; } register value_8_1_reg { width: 32; instance_count: 128; } register value_8_2_reg { width: 32; instance_count: 128; } register value_8_3_reg { width: 32; instance_count: 128; } register value_8_4_reg { width: 32; instance_count: 128; } action read_value_8_1_act() { register_read(nc_value_8.value_8_1, value_8_1_reg, nc_cache_md.cache_index); } action read_value_8_2_act() { register_read(nc_value_8.value_8_2, value_8_2_reg, nc_cache_md.cache_index); } action read_value_8_3_act() { register_read(nc_value_8.value_8_3, value_8_3_reg, nc_cache_md.cache_index); } action read_value_8_4_act() { register_read(nc_value_8.value_8_4, value_8_4_reg, nc_cache_md.cache_index); } table read_value_8_1 { actions { read_value_8_1_act; } } table read_value_8_2 { actions { read_value_8_2_act; } } table read_value_8_3 { actions { read_value_8_3_act; } } table read_value_8_4 { actions { read_value_8_4_act; } } action add_value_header_8_act() { add_to_field(ipv4.totalLen, 16); add_to_field(udp.len, 16); add_header(nc_value_8); } table add_value_header_8 { actions { add_value_header_8_act; } } action write_value_8_1_act() { register_write(value_8_1_reg, nc_cache_md.cache_index, nc_value_8.value_8_1); } action write_value_8_2_act() { register_write(value_8_2_reg, nc_cache_md.cache_index, nc_value_8.value_8_2); } action write_value_8_3_act() { register_write(value_8_3_reg, nc_cache_md.cache_index, nc_value_8.value_8_3); } action write_value_8_4_act() { register_write(value_8_4_reg, nc_cache_md.cache_index, nc_value_8.value_8_4); } table write_value_8_1 { actions { write_value_8_1_act; } } table write_value_8_2 { actions { write_value_8_2_act; } } table write_value_8_3 { actions { write_value_8_3_act; } } table write_value_8_4 { actions { write_value_8_4_act; } } action remove_value_header_8_act() { subtract_from_field(ipv4.totalLen, 16); subtract_from_field(udp.len, 16); remove_header(nc_value_8); } table remove_value_header_8 { actions { remove_value_header_8_act; } } control process_value_8 { if (nc_hdr.op == 0 and nc_cache_md.cache_valid == 1) { apply (add_value_header_8); apply (read_value_8_1); apply (read_value_8_2); apply (read_value_8_3); apply (read_value_8_4); } else if (nc_hdr.op == 9 and nc_cache_md.cache_exist == 1) { apply (write_value_8_1); apply (write_value_8_2); apply (write_value_8_3); apply (write_value_8_4); apply (remove_value_header_8); } }
+parser parse_nc_value_9 { return ingress; }
+
+header_type reply_read_hit_info_md_t {
+    fields {
+        ipv4_srcAddr: 32;
+        ipv4_dstAddr: 32;
+    }
+}
+
+metadata reply_read_hit_info_md_t reply_read_hit_info_md;
+
+action reply_read_hit_before_act() {
+    modify_field (reply_read_hit_info_md.ipv4_srcAddr, ipv4.srcAddr);
+    modify_field (reply_read_hit_info_md.ipv4_dstAddr, ipv4.dstAddr);
+}
+
+table reply_read_hit_before {
+    actions {
+        reply_read_hit_before_act;
+    }
+}
+
+action reply_read_hit_after_act() {
+    modify_field (ipv4.srcAddr, reply_read_hit_info_md.ipv4_dstAddr);
+    modify_field (ipv4.dstAddr, reply_read_hit_info_md.ipv4_srcAddr);
+    modify_field (nc_hdr.op, 1);
+}
+
+table reply_read_hit_after {
+    actions {
+        reply_read_hit_after_act;
+    }
+}
+
+control process_value {
+    if (nc_hdr.op == 0 and nc_cache_md.cache_valid == 1) {
+        apply (reply_read_hit_before);
+    }
+    process_value_1();
+    process_value_2();
+    process_value_3();
+    process_value_4();
+    process_value_5();
+    process_value_6();
+    process_value_7();
+    process_value_8();
+    if (nc_hdr.op == 0 and nc_cache_md.cache_valid == 1) {
+        apply (reply_read_hit_after);
+    }
+}
+# 9 "netcache.p4" 2
+# 1 "ipv4.p4" 1
+action set_egress(egress_spec) {
+    modify_field(standard_metadata.egress_spec, egress_spec);
+    add_to_field(ipv4.ttl, -1);
+}
+
+@pragma stage 11
+table ipv4_route {
+    reads {
+        ipv4.dstAddr : exact;
+    }
+    actions {
+        set_egress;
+    }
+    size : 8192;
+}
+# 10 "netcache.p4" 2
+# 1 "ethernet.p4" 1
+action ethernet_set_mac_act (smac, dmac) {
+    modify_field (ethernet.srcAddr, smac);
+    modify_field (ethernet.dstAddr, dmac);
+}
+table ethernet_set_mac {
+    reads {
+        standard_metadata.egress_port: exact;
+    }
+    actions {
+        ethernet_set_mac_act;
+    }
+}
+# 11 "netcache.p4" 2
+
+control ingress {
+    process_cache();
+    process_value();
+
+    apply (ipv4_route);
+}
+
+control egress {
+    if (nc_hdr.op == 0 and nc_cache_md.cache_exist != 1) {
+        heavy_hitter();
+    }
+    apply (ethernet_set_mac);
+}

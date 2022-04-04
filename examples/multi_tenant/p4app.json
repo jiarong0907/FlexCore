@@ -1,0 +1,58 @@
+
+{
+  "language": "p4-16",
+  "targets": {
+    "multiswitch": {
+      "auto-control-plane": true,
+      "cli": true,
+      "pcap_dump": false,
+      "bmv2_log": true,
+      "NUM_END_HOSTS": "2",
+      "links": [["h1", "s1"],["h2", "s4"],["s1", "s2"],["s1", "s3"],["s2", "s4"],["s3", "s4"]],
+      "hosts": {
+        "h1": {"server": "0"},
+        "h2": {"server": "0"}
+      },
+      "switches": {
+        "s1": {
+          "entries": "s1-commands.txt", 
+          "server": "0"
+        },
+        "s2": {
+          "entries": "s2-commands.txt", 
+          "server": "0"
+        },
+        "s3": {
+          "entries": "s3-commands.txt", 
+          "server": "0"
+        },
+        "s4": {
+          "entries": "s4-commands.txt", 
+          "server": "0"
+        }
+      },
+      "configs": {
+        "s1": "multi_tenant_without_acl.p4",
+        "s2": "multi_tenant_with_acl.p4",
+        "s3": "multi_tenant_without_acl.p4",
+        "s4": "multi_tenant_without_acl.p4"
+      },
+      "servers": ["localhost"],
+      "before": {
+        "cmd": [
+          ["h1", "ip route add 10.0.1.10 dev h1-eth0"],
+          ["h1", "arp -s 10.0.1.10 00:04:00:00:00:01"],
+          ["h1", "ip route add 10.0.2.10 dev h1-eth0"],
+          ["h1", "arp -s 10.0.2.10 00:04:00:00:00:02"],
+          ["h2", "ip route add 10.0.1.10 dev h2-eth0"],
+          ["h2", "arp -s 10.0.1.10 00:04:00:00:00:01"],
+          ["h2", "ip route add 10.0.2.10 dev h2-eth0"],
+          ["h2", "arp -s 10.0.2.10 00:04:00:00:00:02"],
+          ["h1", "rm received.txt"],
+          ["h1", "python ./receive.py >> received.txt &"],
+          ["h2", "python ./send.py 10.0.1.10 xx &"]
+        ]
+      }
+    }
+  }
+}

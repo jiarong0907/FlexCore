@@ -1,0 +1,10 @@
+g1_r,  g1_cG, b_next
+g1_cG, g1_tA, t_next
+g1_cG, g1_cJ, f_next
+g1_tA, g1_tB, b_next
+g1_tB, g1_tH, b_next
+g1_tH, g1_s, b_next
+g1_cJ, g1_tD, t_next
+g1_tD, g1_tH, b_next
+g1_cJ, g1_tE, f_next
+g1_tE, g1_s,  b_next

@@ -1,0 +1,3 @@
+table_add incomingNat dstAddrTranslate 10.0.1.255 => 10.0.1.10 00:04:00:00:00:01 1
+table_add outgoingNat srcAddrTranslate 10.0.1.10 => 10.0.1.255 00:04:00:00:00:02 2
+

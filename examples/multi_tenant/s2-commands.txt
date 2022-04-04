@@ -1,0 +1,8 @@
+table_add mark_tos setTos 10.0.1.10 => 2
+table_add mark_tos setTos 10.0.1.11 => 2
+table_add mark_tos setTos 10.0.1.12 => 2
+table_add ipv4_lpm ipv4_forward 10.0.1.10/32 => 00:04:00:00:00:01 1
+table_add ipv4_lpm ipv4_forward 10.0.1.11/32 => 00:04:00:00:00:01 1
+table_add ipv4_lpm ipv4_forward 10.0.1.12/32 => 00:04:00:00:00:01 1
+table_add ipv4_lpm ipv4_forward 10.0.2.10/32 => 00:04:00:00:00:02 2
+table_add acl allow 2 10.0.2.10 10.0.1.10/32 1234 1235 100
