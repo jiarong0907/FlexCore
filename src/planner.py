@@ -232,7 +232,10 @@ class Planner:
                 # change tabl ingress MyIngress.ipv4_lpm MyIngress.ipv4_forward	flex2
                 if etype == 'b_next':
                     etype = "base_default_next"
-                output += "change tabl ingress "+translate_name(name)+" "+etype+" "+translate_name(evalue)+"\n"
+                if translate_name(name) == 'init':
+                    output += "change "+translate_name(name)+" ingress "+translate_name(evalue)+"\n"
+                else:
+                    output += "change tabl ingress "+translate_name(name)+" "+etype+" "+translate_name(evalue)+"\n"
 
             elif optype == 'set_metadata':
                 # trigger on
