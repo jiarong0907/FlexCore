@@ -26,7 +26,7 @@ This repo serves as a tutorial on the system. It provides the setup for the BMv2
 
 FlexCore includes two parts: 1) the software to process inputs and computes the reconfiguration plans with different consistency guarantees; and 2) the software switch implemented based on BMv2.
 
-The first part is included in this repo, which just requires the regular Python3 environment. The second part is separately maintained in another repo, [runtime-programmable-switch](https://github.com/jiarong0907/runtime-programmable-switch). Please follow the instructions in the runtime-programmable-switch repo to set up the software switches.
+The first part is included in this repo, which just requires the regular Python3 environment. The second part is separately maintained in another repo, [runtime-programmable-switch](https://github.com/jiarong0907/runtime-programmable-switch). Please follow the instructions in the runtime-programmable-switch repo to set up the software switches. **You can simply get a pre-configured environment by downloading our VM image** ([download](https://drive.google.com/file/d/1eqOxmJthd4h_TK8V9VHYGSFerzjjnTKz/view?usp=sharing)).
 
 
 
