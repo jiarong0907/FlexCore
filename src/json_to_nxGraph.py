@@ -53,13 +53,19 @@ def json_to_nxGraph(filename, prefix):
     graph.add_edges_from([(prefix+"r", name2id[ingress["init_table"]], {'type':'b_next'})]) # base_default_next
     for t in ingress["tables"]:
         # normally it has only one next table
+        curId = name2id[t["name"]]
         nextId = name2id[t["base_default_next"]]
-        graph.add_edges_from([(name2id[t["name"]], nextId, {'type':'b_next'})])
+        graph.add_edges_from([(curId, nextId, {'type':'b_next'})])
 
         for nt in t["next_tables"]:
-            if t["next_tables"][nt] != t["base_default_next"]:
-                # TODO: support __HIT__, __MISS__, and action pointers
-                raise NotImplementedError("Does not support multiple next table pointers for a table!")
+            nextName = t["next_tables"][nt]
+            # if t["next_tables"][nt] != t["base_default_next"]:
+            #     # TODO: support __HIT__, __MISS__, and action pointers
+            #     raise NotImplementedError("Does not support multiple next table pointers for a table!")
+	    # TODO: [FlexSwitch] Modified to support multiple next table pointers, but we
+	    # need to check other part of the implementation
+            nextId = name2id[nextName]
+            graph.add_edges_from([(curId, nextId, {"type": nt})])
 
     for c in ingress["conditionals"]:
         graph.add_edges_from([(name2id[c["name"]], name2id[c["true_next"]], {'type':'t_next'}),
