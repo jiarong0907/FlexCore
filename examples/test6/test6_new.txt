@@ -1,9 +1,7 @@
-g2_r,  g2_cA, b_next
-g2_cA, g2_cB, t_next
-g2_cA, g2_tC, f_next
-g2_cB, g2_tD, f_next
-g2_cB, g2_tE, t_next
-g2_tD, g2_tE, b_next
-g2_tC, g2_tF, b_next
-g2_tF, g2_s,  b_next
-g2_tE, g2_s,  b_next
+g2_r,  g2_cD, b_next
+g2_cD, g2_tB, t_next
+g2_cD, g2_tC, f_next
+g2_tB, g2_cA, b_next
+g2_tC, g2_cA, b_next
+g2_cA, g2_s,  t_next
+g2_cA, g2_s,  f_next

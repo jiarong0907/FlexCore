@@ -1,7 +1,7 @@
 g1_r,  g1_cA, b_next
-g1_cA, g1_cB, t_next
+g1_cA, g1_tB, t_next
 g1_cA, g1_tC, f_next
-g1_cB, g1_tD, f_next
-g1_tD, g1_s,  b_next
-g1_cB, g1_s,  t_next
-g1_tC, g1_s,  b_next
+g1_tB, g1_tC, b_next
+g1_tC, g1_cD, b_next
+g1_cD, g1_s,  t_next
+g1_cD, g1_s,  f_next

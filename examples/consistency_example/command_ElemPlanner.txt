@@ -1,0 +1,26 @@
+insert tabl ingress new_MyIngress.E
+insert flex ingress flx_TE0 null null
+insert flex ingress flx_TE2 null null
+change tabl ingress new_MyIngress.E base_default_next null
+change flex ingress flx_TE0 true_next new_MyIngress.E
+change flex ingress flx_TE0 false_next null
+change flex ingress flx_TE2 true_next new_MyIngress.E
+change flex ingress flx_TE2 false_next null
+change tabl ingress old_MyIngress.D base_default_next flx_TE0
+change cond ingress old_node_3 false_next flx_TE2
+trigger on
+change tabl ingress old_MyIngress.D base_default_next new_MyIngress.E
+change cond ingress old_node_3 false_next new_MyIngress.E
+trigger off
+delete flex ingress flx_TE0
+delete flex ingress flx_TE2
+insert tabl ingress new_MyIngress.F
+insert flex ingress flx_TE1 null null
+change tabl ingress new_MyIngress.F base_default_next null
+change flex ingress flx_TE1 true_next new_MyIngress.F
+change flex ingress flx_TE1 false_next null
+change tabl ingress old_MyIngress.C base_default_next flx_TE1
+trigger on
+change tabl ingress old_MyIngress.C base_default_next new_MyIngress.F
+trigger off
+delete flex ingress flx_TE1

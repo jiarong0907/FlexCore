@@ -1,0 +1,21 @@
+insert tabl ingress new_MyIngress.ipv4_lpm
+insert tabl ingress new_MyIngress.ipv4_hit
+insert tabl ingress new_MyIngress.ipv4_miss
+insert flex ingress flx_TE0 null null
+change tabl ingress new_MyIngress.ipv4_lpm base_default_next null
+change tabl ingress new_MyIngress.ipv4_lpm __HIT__ new_MyIngress.ipv4_hit
+change tabl ingress new_MyIngress.ipv4_lpm __MISS__ new_MyIngress.ipv4_miss
+change tabl ingress new_MyIngress.ipv4_hit base_default_next null
+change tabl ingress new_MyIngress.ipv4_hit MyIngress.hit_forward null
+change tabl ingress new_MyIngress.ipv4_hit MyIngress.drop null
+change tabl ingress new_MyIngress.ipv4_miss base_default_next null
+change tabl ingress new_MyIngress.ipv4_miss MyIngress.hit_miss null
+change tabl ingress new_MyIngress.ipv4_miss MyIngress.drop null
+change flex ingress flx_TE0 true_next new_MyIngress.ipv4_lpm
+change flex ingress flx_TE0 false_next old_MyIngress.ipv4_lpm
+change cond ingress old_node_2 true_next flx_TE0
+trigger on
+change cond ingress old_node_2 true_next new_MyIngress.ipv4_lpm
+delete tabl ingress old_MyIngress.ipv4_lpm
+trigger off
+delete flex ingress flx_TE0
