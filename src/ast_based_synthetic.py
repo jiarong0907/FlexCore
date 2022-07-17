@@ -349,7 +349,7 @@ class Program:
 			sys.exit(-1)
 		candidates = self.p4file2ids[p4_file]
 		return self.id2node[random.choice(list(candidates))]
-		
+
 		# loc = 0
 		# for idx in id2node:
 		# 	if loc == r:
@@ -398,7 +398,7 @@ class Program:
 		false_node = false_block.get_first_exec()
 		next_node = parent_block.get_node_after(cond)
 		if not silent:
-			print("c", cond.id, "before", true_node.id, 
+			print("c", cond.id, "before", true_node.id,
 				"false", false_node.id if false_node else false_node,
 				"next node", next_node.id if next_node else next_node)
 
@@ -539,10 +539,10 @@ class Program:
 					n = self.get_random_node_with_dummy(p4_file)
 					start_id, subblock_size = n.parent_block.get_random_subblock(edit_subblock_cap)
 					replace_prog_size = random.randint(0, replace_prog_cap)
-					prog = Program(idStart = self.idCount, 
-						size = replace_prog_size, 
-						prefix = self.prefix, 
-						init_table_ratio = self.init_table_ratio, 
+					prog = Program(idStart = self.idCount,
+						size = replace_prog_size,
+						prefix = self.prefix,
+						init_table_ratio = self.init_table_ratio,
 						init_subblock_cap = self.init_subblock_cap)
 					prog.gen_prog()
 					first_time = False
@@ -639,10 +639,10 @@ def gen_synthetic_prog_pair(init_prog_size = 10,
 			replace_prog_cap = 3,
 			edit_subblock_cap = 3):
 	# random.seed(0)
-	prog = Program(idStart = 0, 
-		size = init_prog_size, 
-		prefix = '', 
-		init_table_ratio = init_table_ratio, 
+	prog = Program(idStart = 0,
+		size = init_prog_size,
+		prefix = '',
+		init_table_ratio = init_table_ratio,
 		init_subblock_cap = init_subblock_cap)
 	prog.gen_prog()
 	print("Old program generation done")
@@ -686,8 +686,8 @@ def gen_prog_pair_from_graph(graph, prefix,
 			edit_subblock_cap = 3,
 			p4_file = None):
 	# random.seed(0)
-	prog = Program(idStart = 0, 
-		size = 0, 
+	prog = Program(idStart = 0,
+		size = 0,
 		prefix = prefix,
 		init_table_ratio = init_table_ratio,
 		init_subblock_cap = init_subblock_cap)
@@ -859,7 +859,7 @@ def main(args: argparse.Namespace) -> None:
 		g1, g2 = gen_prog_pair_from_graph(
 			graph,
 			'',
-			init_table_ratio=args.init_table_ratio, 
+			init_table_ratio=args.init_table_ratio,
 			init_subblock_cap=args.init_subblock_cap,
 			edit_times=args.edit_times,
 			add_table_ratio=args.add_table_ratio,
@@ -872,7 +872,7 @@ def main(args: argparse.Namespace) -> None:
 	else:
 		g1, g2 = gen_synthetic_prog_pair(
 			init_prog_size=args.init_prog_size,
-			init_table_ratio=args.init_table_ratio, 
+			init_table_ratio=args.init_table_ratio,
 			init_subblock_cap=args.init_subblock_cap,
 			edit_times=args.edit_times,
 			add_table_ratio=args.add_table_ratio,

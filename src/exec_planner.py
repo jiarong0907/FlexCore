@@ -17,9 +17,9 @@ class ExecPlanner(Planner):
         '''
 
         # Compute the MCS and color the nodes and edges
-        rdg_s = self.graph_tool.GetMCS(rdg_o, rdg_n, self.inbuilder)
+        rdg_s = self.graph_tool.get_MCS(rdg_o, rdg_n, self.inbuilder)
         # Enhance it with TEs
-        rdg_te = self.graph_tool.EnhanceWithTEs(rdg_s)
+        rdg_te = self.graph_tool.enhance_with_TEs(rdg_s)
 
         plan = self.compute(rdg_te)
         return self.get_plan_commands(plan, dump_path)
@@ -34,26 +34,16 @@ class ExecPlanner(Planner):
             g (list(list)): A list of reconfig plans.
         '''
 
-        # get the key for an edge, which is used to delete an edge in a MultiDiGraph
-        def find_edge_idx(graph, target):
-            candidates = graph.get_edge_data(target[0], target[1])
-            assert (candidates != None)
-
-            for key in candidates.keys():
-                if candidates[key]['type'] == target[2]['type']:
-                    return key
-            return -1
-
         # get all red and green edges
-        green_edges = []
-        red_edges = []
+        green_edges = list()
+        red_edges = list()
         for e in rdg_te.edges(data=True):
             ecolor = e[2]['color']
             if ecolor == 'green':
-                idx = find_edge_idx (rdg_te, e)
+                idx = self.find_edge_idx (rdg_te, e)
                 green_edges.append((e[0], e[1], idx))
             elif ecolor == 'red':
-                idx = find_edge_idx (rdg_te, e)
+                idx = self.find_edge_idx (rdg_te, e)
                 red_edges.append((e[0], e[1], idx))
 
         # we remove green edges from rdg_te to get the colored old graph
@@ -70,14 +60,13 @@ class ExecPlanner(Planner):
         g_green.remove_nodes_from(list(nx.isolates(g_green)))
 
         # get all TEs
-        TEs = []
+        TEs = list()
         for node in rdg_te.nodes(data=True):
             if node[1]['color'] == 'blue':
                 if node not in TEs:
                     TEs.append(node[0])
                 else:
-                    Logger.DEBUG("Found a duplicated TE in the graph: "+str(node))
-                    assert(0)
+                    raise ValueError("Found a duplicated TE in the graph: "+str(node))
 
         Logger.INFO("The TEs are "+str(TEs))
         Logger.INFO("The number of TEs are "+str(len(TEs)))
@@ -101,21 +90,19 @@ class ExecPlanner(Planner):
 
         # TODO: add sort back
         # get one topo sort solutions.
+        self.graph_tool.show_figure(dag)
         one_sol = next(nx.all_topological_sorts(dag))
         # groupping
-        one_plan = []
+        one_plan = list()
         for i in range(len(one_sol)):
             # for each group in this solution
             TEs = one_sol[i].split(",")
-            new_group = []
+            new_group = list()
             for TE in TEs:
                 new_group.append(TE.strip())
                 visited = set()
                 visited = self.colored_dfs(rdg_te, TE.strip(), visited)
-
-                for op in visited:
-                    if op not in new_group:
-                        new_group.append(op)
+                new_group += [op for op in visited if op not in new_group]
             one_plan.append(new_group)
 
         # we need to deduplciate the op for shared red and green edges
@@ -155,8 +142,7 @@ class ExecPlanner(Planner):
                             # red should be done by the first group, so we remove it from the later one
                             groups[j].remove (node)
                         else:
-                            Logger.DEBUG("Cannot handle the node color: "+str(vcolor))
-                            assert(0)
+                            raise ValueError("Cannot handle the node color: "+str(vcolor))
         return groups
 
     def get_depedency_dag(self, M, C):
@@ -173,9 +159,7 @@ class ExecPlanner(Planner):
             dag.add_nodes_from([(TE, {'name':TE, 'color':'blue'})])
 
         for c in C:
-            u = c[0]
-            v = c[1]
-            op = c[2]
+            u, v, op = c[0], c[1], c[2]
             if op == '<=':
                 dag.add_edges_from([(u, v,{'color':'blue'})])
             elif op == '>=':
@@ -187,14 +171,13 @@ class ExecPlanner(Planner):
             elif op == '=1':
                 pass
             else:
-                Logger.ERROR("Cannot solve constraint "+str(u)+" "+str(op)+" "+str(v))
-                assert(0)
+                raise ValueError("Cannot solve constraint "+str(u)+" "+str(op)+" "+str(v))
 
         # the new graph with merged TEs
         dag_scc = nx.DiGraph(directed=True)
 
         # node-scc_name mapping. used to create a new graph because we cannot iterate on a size-changed object
-        n2scc_map = {}
+        n2scc_map = dict()
         scc_list = list(nx.strongly_connected_components(dag))
         for scc in scc_list:
             name = ""
@@ -209,19 +192,11 @@ class ExecPlanner(Planner):
 
         Logger.DEBUG("n2scc_map = "+str(n2scc_map))
 
-        # an inner function to check whether two sccs should have an edge
-        def check_scc_edge(uscc, vscc):
-            for u in uscc:
-                for v in vscc:
-                    if (u, v) in dag.edges():
-                        return True
-            return False
-
         for uscc in scc_list:
             for vscc in scc_list:
                 if uscc != vscc:
                     # check whether there is an edge
-                    if check_scc_edge(uscc, vscc):
+                    if self.check_scc_edge(uscc, vscc, dag):
                         dag_scc.add_edges_from([(n2scc_map[list(uscc)[0]], n2scc_map[list(vscc)[0]], {'color':'blue'})])
 
         return dag_scc
@@ -246,3 +221,19 @@ class ExecPlanner(Planner):
                     continue
                 visited = self.colored_dfs(rdg_te, oe[1], visited)
         return visited
+
+    # get the key for an edge, which is used to delete an edge in a MultiDiGraph
+    def find_edge_idx(self, graph, target):
+        candidates = graph.get_edge_data(target[0], target[1])
+        assert (candidates != None)
+
+        return next((key for key in candidates.keys()
+                        if candidates[key]['type'] == target[2]['type']), -1)
+
+    # an inner function to check whether two sccs should have an edge
+    def check_scc_edge(self, uscc, vscc, dag):
+        for u in uscc:
+            for v in vscc:
+                if (u, v) in dag.edges():
+                    return True
+        return False

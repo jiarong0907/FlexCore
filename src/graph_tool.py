@@ -20,7 +20,7 @@ class GraphTool:
             'ipv6_metadata.lkp_ipv6_da' : 'ipv6.dstAddr',
         }
 
-    def GetMCS(self, graph_old, graph_new, inbuilder):
+    def get_MCS(self, graph_old, graph_new, inbuilder):
         '''Construct the minimal common supergraph
         Args:
             graph_old: The networkx object of the old graph
@@ -35,80 +35,59 @@ class GraphTool:
         Logger.INFO("new to old node mapping: "+str(n2o_node_map))
 
         # use to store which table has been taken, to prevent two old tables use the same new table
-        taken = dict()
-        for nodes_myId_new in graph_new.nodes():
-            taken[nodes_myId_new] = 0
+        taken = {nodes_myId_new: 0 for nodes_myId_new in graph_new.nodes()}
 
         # check whether an old table can map to multiple new tables
         cn_map_o2n = dict() # common node mapping from old to new
         for key in o2n_node_map.keys():
             mapping = o2n_node_map[key]
             if len(mapping) > 1:
-                Logger.DEBUG("The old table can map to multiple new tables. Need to handle specially!\n" + str(key) +"\n"+str(mapping))
-                candidate = None
-                for m in mapping:
-                    if m[3:] == key[3:]:
-                        candidate = m
-                        break
-                if candidate is not None:
-                    if taken[candidate] == 0:
-                        Logger.DEBUG("According to the table name, we choose: " + str(candidate))
-                        cn_map_o2n[key]=[candidate]
-                        taken[candidate] = 1
-                    else:
-                        Logger.DEBUG("We find one by name but it has been taken by others")
-                        assert(0)
-                else:
-                    Logger.DEBUG("Cannot make a decision using table name, we regard this table as deleted.")
+                Logger.DEBUG("The old table can map to multiple new tables. \
+                        Need to handle specially!\n" + str(key) +"\n"+str(mapping))
+
+                # find the first match
+                candidate = next((m for m in mapping if m[3:] == key[3:]), None)
+                if candidate is None:
+                    raise ValueError("Cannot make a decision using table name, we regard this table as deleted.")
+
+                if taken[candidate] != 0:
+                    raise ValueError("We find one by name but it has been taken by others")
+
+                Logger.DEBUG("According to the table name, we choose: " + str(candidate))
+                cn_map_o2n[key]=[candidate]
+                taken[candidate] = 1
 
             elif len(mapping) == 1:
-                if taken[mapping[0]] == 0:
-                    cn_map_o2n[key]=mapping
-                    taken[mapping[0]] = 1
-                else:
-                    Logger.DEBUG("Only one candidate but it has been taken by others")
-                    # assert(0)
+                if taken[mapping[0]] != 0:
+                    raise ValueError("Only one candidate but it has been taken by others")
+                cn_map_o2n[key]=mapping
+                taken[mapping[0]] = 1
 
         # check whether muliple old tables map to one new table
         for key in n2o_node_map.keys():
-            mapping = n2o_node_map[key]
-            if len(mapping) > 1:
+            if len(n2o_node_map[key]) > 1:
                 Logger.DEBUG("The new table can map to multiple old tables. Need to handle specially!")
-                # assert(0)
+                # raise ValueError("The new table can map to multiple old tables. Need to handle specially!")
 
         Logger.INFO("Table mapping check done.")
 
         # rewrite cn_map_o2n as each key only has one value now
-        tmp = dict()
-        for key in cn_map_o2n.keys():
-            assert (len(cn_map_o2n[key])==1)
-            tmp[key] = cn_map_o2n[key][0]
-        cn_map_o2n = tmp
+        assert (len(cn_map_o2n[key])==1 for key in cn_map_o2n.keys())
+        cn_map_o2n = {key: cn_map_o2n[key][0] for key in cn_map_o2n.keys()}
 
         # double-check there is no shared nodes
         val_set = cn_map_o2n.values()
         assert(len(val_set)==len(set(val_set)))
 
         # make cn_map_n2o for convience
-        cn_map_n2o = dict()
-        for key in cn_map_o2n.keys():
-            cn_map_n2o[cn_map_o2n[key]] = key
-
-        # compute all deleted nodes
-        deleted_nodes = []
-        nodes_old = graph_old.nodes()
-        for nodes_myId_old in nodes_old:
-            if nodes_myId_old not in cn_map_o2n.keys():
-                deleted_nodes.append(nodes_myId_old)
-
+        cn_map_n2o = {cn_map_o2n[key]: key for key in cn_map_o2n.keys()}
         Logger.DEBUG(cn_map_o2n.values())
 
+        # compute all deleted nodes
+        deleted_nodes = [myId_old for myId_old in graph_old.nodes() if myId_old not in cn_map_o2n.keys()]
+
         # compute all inserted nodes
-        inserted_nodes = []
-        nodes_new = graph_new.nodes()
-        for nodes_myId_new in nodes_new:
-            if nodes_myId_new not in list(cn_map_o2n.values()):
-                inserted_nodes.append(nodes_myId_new)
+        inserted_nodes = [myId_new for myId_new in graph_new.nodes() if myId_new not in list(cn_map_o2n.values())]
 
         Logger.INFO("The number of common_nodes: "+str(len(cn_map_o2n)))
         Logger.INFO("common_nodes: "+str(cn_map_o2n))
@@ -119,25 +98,10 @@ class GraphTool:
 
         # build the MCS
         MCS = nx.MultiDiGraph(directed=True)
-        for node in cn_map_o2n.keys():
-            MCS.add_nodes_from([(node[3:], {'name':node[3:], 'color':'black'})]) # [3:] to remove the prefix
-
-        for node in deleted_nodes:
-            MCS.add_nodes_from([(node, {'name':node, 'color':'red'})])
-
-        for node in inserted_nodes:
-            MCS.add_nodes_from([(node, {'name':node, 'color':'green'})])
-
-        # check whether an edge is in a graph
-        def check_exist_edge(graph, u, v, etype):
-            candidates = graph.get_edge_data(u, v)
-            if candidates is None:
-                return False
-
-            for key in candidates:
-                if etype == candidates[key]['type']:
-                    return True
-            return False
+        # [3:] to remove the prefix
+        for node in cn_map_o2n.keys():  MCS.add_nodes_from([(node[3:], {'name':node[3:], 'color':'black'})])
+        for node in deleted_nodes:      MCS.add_nodes_from([(node, {'name':node, 'color':'red'})])
+        for node in inserted_nodes:     MCS.add_nodes_from([(node, {'name':node, 'color':'green'})])
 
         # add edges
         for edge in graph_old.edges(data=True):
@@ -145,33 +109,28 @@ class GraphTool:
             # There are four cases to consider
             # u and v are both common nodes
             if edge[0] in cn_map_o2n.keys() and edge[1] in cn_map_o2n.keys():
-                u = edge[0][3:] # [3:] to remove the prefix
-                v = edge[1][3:]
+                u, v = edge[0][3:], edge[1][3:] # [3:] to remove the prefix
                 # check whether the edge is in the new graph
-                if check_exist_edge (graph_new, cn_map_o2n[edge[0]], cn_map_o2n[edge[1]], edge_type):
-                    color = 'black'
-                else:
-                    color = 'red'
+                color = 'black' if self.check_exist_edge (graph_new,
+                                    cn_map_o2n[edge[0]], cn_map_o2n[edge[1]], edge_type) \
+                        else 'red'
             # v is not in common nodes, so it must be a red edge
             elif edge[0] in cn_map_o2n.keys() and edge[1] not in cn_map_o2n.keys():
                 assert(edge[1] in deleted_nodes)
-                u = edge[0][3:]
-                v = edge[1]
+                u, v = edge[0][3:], edge[1]
                 color = 'red'
             # u is not in common nodes, so it must be a red edge
             elif edge[0] not in cn_map_o2n.keys() and edge[1] in cn_map_o2n.keys():
                 assert(edge[0] in deleted_nodes)
-                u = edge[0]
-                v = edge[1][3:]
+                u, v = edge[0], edge[1][3:]
                 color = 'red'
             # u is not in common nodes, so it must be a red edge
             elif edge[0] not in cn_map_o2n.keys() and edge[1] not in cn_map_o2n.keys():
                 assert(edge[0] in deleted_nodes and edge[1] in deleted_nodes)
-                u = edge[0]
-                v = edge[1]
+                u, v = edge[0], edge[1]
                 color = 'red'
             else:
-                assert(0)
+                raise ValueError("Unexpected value!")
 
             MCS.add_edges_from([(u, v,{'type':edge_type, 'color':color, 'isTE':False})])
 
@@ -181,33 +140,29 @@ class GraphTool:
 
             if edge[0] in cn_map_o2n.values() and edge[1] in cn_map_o2n.values():
                 # We must translate the name back to that in the old graph, because the common table might have different name
-                u = cn_map_n2o[edge[0]][3:] # [3:] to remove the prefix
-                v = cn_map_n2o[edge[1]][3:]
+                u, v = cn_map_n2o[edge[0]][3:], cn_map_n2o[edge[1]][3:]
                 # check whether the edge is in the old graph
-                if not check_exist_edge (graph_old, cn_map_n2o[edge[0]], cn_map_n2o[edge[1]], edge_type):
+                if not self.check_exist_edge (graph_old, cn_map_n2o[edge[0]], cn_map_n2o[edge[1]], edge_type):
                     color = 'green'
                 else:
                     continue # has been processed in the old edges.
             # v is not in common nodes, it must be in green
             elif edge[0] in cn_map_o2n.values() and edge[1] not in cn_map_o2n.values():
                 assert(edge[1] in inserted_nodes)
-                u = cn_map_n2o[edge[0]][3:]
-                v = edge[1]
+                u, v = cn_map_n2o[edge[0]][3:], edge[1]
                 color = 'green'
             # u is not in common nodes, it must be in green
             elif edge[0] not in cn_map_o2n.values() and edge[1] in cn_map_o2n.values():
                 assert(edge[0] in inserted_nodes)
-                u = edge[0]
-                v = cn_map_n2o[edge[1]][3:]
+                u, v = edge[0], cn_map_n2o[edge[1]][3:]
                 color = 'green'
             # u is not in common nodes, it must be in green
             elif edge[0] not in cn_map_o2n.values() and edge[1] not in cn_map_o2n.values():
                 assert(edge[0] in inserted_nodes and edge[1] in inserted_nodes)
-                u = edge[0]
-                v = edge[1]
+                u, v = edge[0], edge[1]
                 color = 'green'
             else:
-                assert(0)
+                raise ValueError("Unexpected value!")
 
             MCS.add_edges_from([(u, v,{'type':edge_type, 'color':color, 'isTE':False})])
 
@@ -241,8 +196,7 @@ class GraphTool:
         for nodes_myId_g1 in nodes_g1:
             not_found = True
             for nodes_myId_g2 in nodes_g2:
-                n1 = g1.nodes[nodes_myId_g1]
-                n2 = g2.nodes[nodes_myId_g2]
+                n1, n2 = g1.nodes[nodes_myId_g1], g2.nodes[nodes_myId_g2]
 
                 # compare the type of nodes, we have three types of node: t--table, c--conditional, a--action call
                 # and two special types: r--root and s--sink
@@ -262,11 +216,11 @@ class GraphTool:
                         node_mapping[n1.get('myId')] = [n2.get('myId')]
 
             if not_found:
-                node_mapping[n1.get('myId')] = []
+                node_mapping[n1.get('myId')] = list()
 
         return node_mapping
 
-    def EnhanceWithTEs(self, g):
+    def enhance_with_TEs(self, g):
         '''Enhance the MCS with TE nodes. The purpose is to handle a node has more than one TEs.
         A TE node (blue) will be inserted right after the node that has TEs.
          O                   O
@@ -303,19 +257,7 @@ class GraphTool:
         # when a table has many actions, but they all point to the same next node,
         # we regard them as one TE with multiple incoming edges
         # init the union relation
-        parent = dict()
-        for i in range(len(TEs)):
-            parent[i] = i
-
-        # A utility function to do union of two subsets
-        def union(parent, x, y):
-            pid = parent[x]
-            qid = parent[y]
-
-            for key in parent.keys():
-                if parent[key] == pid:
-                    parent[key] = qid
-
+        parent = {i: i for i in range(len(TEs))}
         # if two TEs if they have the same source and destination node, we group them
         for i in range(len(TEs)):
             for j in range(len(TEs)):
@@ -323,9 +265,8 @@ class GraphTool:
                 keyj = list(TEs.keys())[j]
                 if i != j and keyi[0] == keyj[0] and keyi[1] == keyj[1] and \
                         TEs[keyi][0] == TEs[keyj][0] and TEs[keyi][1] == TEs[keyj][1]:
-                    union(parent, i, j)
+                    self.union(parent, i, j)
 
-        # print (parent)
         # get all groups by checking the union relation
         groups = dict()
         for key in parent:
@@ -337,33 +278,21 @@ class GraphTool:
         Logger.DEBUG("The number of TE groups is "+str(len(groups))+".\n The groups are "+str(groups))
         Logger.DEBUG("The groups of TEs are "+str(groups))
 
-        def find_TE_in_graph(graph, target):
-            candidates = graph.get_edge_data(target[0], target[1])
-            assert (candidates != None)
-            TE = None
-            idx = -1
-            for key in candidates.keys():
-                if candidates[key]['isTE'] and candidates[key]['type'] == target[2]:
-                    TE = candidates[key]
-                    idx = key
-                    break
-            return TE, idx
-
         # insert nodes of TEs
         count_TEs = 0
         for key in groups:
             all_TEs = groups[key] # all TEs in this group
-            all_red_type = [] # type for all red edges
-            all_green_type = [] # type for all green edges
-            all_red_idx = [] # index for all red edges
-            all_green_idx = [] # index for all green edges
+            all_red_type = list() # type for all red edges
+            all_green_type = list() # type for all green edges
+            all_red_idx = list() # index for all red edges
+            all_green_idx = list() # index for all green edges
             red_v = None # the next node of red edges, all red edges share the same next node
             green_v = None # the next node of green edges, all green edges share the same next node
             com_u = None # the previous node, all edges share the same previous node
 
             for te in all_TEs:
-                key_edge, key_idx = find_TE_in_graph(g, te)
-                paired_edge, paired_idx = find_TE_in_graph(g, TEs[te])
+                key_edge, key_idx = self.find_TE_in_graph(g, te)
+                paired_edge, paired_idx = self.find_TE_in_graph(g, TEs[te])
 
                 if key_edge['color'] == 'red':
                     all_red_type.append(key_edge['type'])
@@ -396,8 +325,7 @@ class GraphTool:
                     else:
                         assert(red_v==TEs[te][1])
                 else:
-                    Logger.ERROR("The color of the TE is not correct: "+str(key_edge['color']))
-                    assert(0)
+                    raise ValueError("The color of the TE is not correct: "+str(key_edge['color']))
 
                 if com_u is None:
                     com_u = te[0]
@@ -417,11 +345,8 @@ class GraphTool:
                 g.add_edges_from([(com_u, "TE"+str(count_TEs), {'type':all_red_type[i], 'color':'blue', 'isTE':False})])
             # delete the original TE edges
             # Must give a key for MultiGraph
-            for idx in all_red_idx:
-                g.remove_edge(com_u, red_v, idx)
-            for idx in all_green_idx:
-                g.remove_edge(com_u, green_v, idx)
-
+            for idx in all_red_idx:    g.remove_edge(com_u, red_v, idx)
+            for idx in all_green_idx:  g.remove_edge(com_u, green_v, idx)
             count_TEs += 1
 
         Logger.INFO("# rdg_te nodes: " + str(len(g.nodes())))
@@ -431,11 +356,7 @@ class GraphTool:
 
         # show_MCS(g)
         # show_colored_only_MCS(g)
-        # for n in g.nodes(data=True):
-        #     print (n)
         return g
-
-
 
     def alias_check(self, s1, s2):
         if s1 == s2:
@@ -467,6 +388,9 @@ class GraphTool:
             if n1['actions'][i] != n2['actions'][i] \
                 or not self.alias_check(n1['actions'][i], n2['actions'][i]):
                 return False
+
+        if inbuilder.__class__.__name__ == 'ObjInputBuilder':
+            return True
 
         # If one table has __HIT__ and __MISS__, but the other does not, they are viewed as
         # different tables, even if everything else is the same.
@@ -502,13 +426,6 @@ class GraphTool:
             or not self.compare_leftRight(v1['right'], v2['right']):
             return False
         return True
-        # if v1['op'] == 'or' \
-        #     or v1['op'] == 'and' \
-        #     or v1['op'] == '==' \
-        #     or v1['op'] == '!-' \
-        #     or v1['op'] == 'not' \
-        #     or v1['op'] == 'd2b' \
-        #     :
 
     def compare_leftRight(self, lr1, lr2):
         if lr1 == None and lr2 == None:
@@ -534,7 +451,37 @@ class GraphTool:
             return n1['name'] == n2['name']
         return self.compare_expression(n1['expression'], n2['expression'])
 
+    # check whether an edge is in a graph
+    def check_exist_edge(self, graph, u, v, etype):
+        candidates = graph.get_edge_data(u, v)
+        if candidates is None:
+            return False
 
+        for key in candidates:
+            if etype == candidates[key]['type']:
+                return True
+        return False
+
+    # A utility function to do union of two subsets
+    def union(self, parent, x, y):
+        pid = parent[x]
+        qid = parent[y]
+
+        for key in parent.keys():
+            if parent[key] == pid:
+                parent[key] = qid
+
+    def find_TE_in_graph(self, graph, target):
+        candidates = graph.get_edge_data(target[0], target[1])
+        assert (candidates != None)
+        TE = None
+        idx = -1
+        for key in candidates.keys():
+            if candidates[key]['isTE'] and candidates[key]['type'] == target[2]:
+                TE = candidates[key]
+                idx = key
+                break
+        return TE, idx
 
     def show_figure(self, G):
         '''A helper function. Draw the figure for debugging
@@ -547,7 +494,8 @@ class GraphTool:
         pos=nx.spring_layout(G)
         nx.draw(G,pos, node_size=1500, with_labels=True)
         plt.draw()
-        plt.show()
+        # plt.show()
+        plt.savefig("1.pdf")
 
 
     def show_MCS(self, G):
@@ -557,7 +505,7 @@ class GraphTool:
         Return:
             None
         '''
-        node_color_map = []
+        node_color_map = list()
         for node in G.nodes():
             node_color = G.nodes[node].get('color')
             if node_color == 'red':
@@ -569,7 +517,7 @@ class GraphTool:
             else:
                 node_color_map.append('grey')
 
-        edge_color_map = []
+        edge_color_map = list()
         for edge in G.edges(data=True):
             edge_color = edge[2]['color']
             if edge_color == 'red':
@@ -603,8 +551,8 @@ class GraphTool:
                     return key
             return -1
 
-        green_edges = []
-        red_edges = []
+        green_edges = list()
+        red_edges = list()
         for e in G.edges(data=True):
             ecolor = e[2]['color']
             if ecolor == 'green':
@@ -629,8 +577,8 @@ class GraphTool:
 
 
         # get TEs
-        old_nodes = []
-        new_nodes = []
+        old_nodes = list()
+        new_nodes = list()
         for node in G.nodes(data=True):
             if node[1]['color'] == 'blue':
                 if node not in old_nodes:
@@ -688,7 +636,7 @@ class GraphTool:
             new_G.add_edges_from([(edge[0], edge[1], {'type':edata['type'], 'color':edata['color'], 'isTE':edata['isTE']})])
 
         # get color map for nodes
-        node_color_map = []
+        node_color_map = list()
         for node in new_G.nodes():
             node_color = new_G.nodes[node].get('color')
             if node_color == 'red':
@@ -701,7 +649,7 @@ class GraphTool:
                 node_color_map.append('grey')
 
         # get color map for edges
-        edge_color_map = []
+        edge_color_map = list()
         for edge in new_G.edges(data=True):
             edge_color = edge[2]['color']
             if edge_color == 'red':

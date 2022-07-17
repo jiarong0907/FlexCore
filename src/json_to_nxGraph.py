@@ -59,9 +59,10 @@ def json_to_nxGraph(filename, prefix, enable_action_ptr=False):
         for nt in t["next_tables"]:
             if not enable_action_ptr and t["next_tables"][nt] != t["base_default_next"]:
                 raise NotImplementedError("Does not support multiple next table pointers for a table!")
-            nextName = t["next_tables"][nt]
-            nextId = name2id[nextName]
-            graph.add_edges_from([(curId, nextId, {"type": nt})])
+            if enable_action_ptr:
+                nextName = t["next_tables"][nt]
+                nextId = name2id[nextName]
+                graph.add_edges_from([(curId, nextId, {"type": nt})])
 
     for c in ingress["conditionals"]:
         graph.add_edges_from([(name2id[c["name"]], name2id[c["true_next"]], {'type':'t_next'}),
