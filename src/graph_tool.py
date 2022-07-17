@@ -77,7 +77,6 @@ class GraphTool:
                 # assert(0)
 
         Logger.INFO("Table mapping check done.")
-        # assert(0)
 
         # rewrite cn_map_o2n as each key only has one value now
         tmp = dict()
@@ -89,7 +88,6 @@ class GraphTool:
         # double-check there is no shared nodes
         val_set = cn_map_o2n.values()
         assert(len(val_set)==len(set(val_set)))
-        # assert(0)
 
         # make cn_map_n2o for convience
         cn_map_n2o = dict()
@@ -168,8 +166,7 @@ class GraphTool:
                 color = 'red'
             # u is not in common nodes, so it must be a red edge
             elif edge[0] not in cn_map_o2n.keys() and edge[1] not in cn_map_o2n.keys():
-                assert(edge[0] in deleted_nodes)
-                assert(edge[1] in deleted_nodes)
+                assert(edge[0] in deleted_nodes and edge[1] in deleted_nodes)
                 u = edge[0]
                 v = edge[1]
                 color = 'red'
@@ -205,8 +202,7 @@ class GraphTool:
                 color = 'green'
             # u is not in common nodes, it must be in green
             elif edge[0] not in cn_map_o2n.values() and edge[1] not in cn_map_o2n.values():
-                assert(edge[0] in inserted_nodes)
-                assert(edge[1] in inserted_nodes)
+                assert(edge[0] in inserted_nodes and edge[1] in inserted_nodes)
                 u = edge[0]
                 v = edge[1]
                 color = 'green'
@@ -249,19 +245,16 @@ class GraphTool:
                 n2 = g2.nodes[nodes_myId_g2]
 
                 # compare the type of nodes, we have three types of node: t--table, c--conditional, a--action call
+                # and two special types: r--root and s--sink
                 if n1.get('myId')[3] != n2.get('myId')[3]:
                     continue
 
+                # TODO: change[3] stuff to use a unified function like GetNodeType
                 if n1.get('myId')[3] == 'r' \
                         or n1.get('myId')[3] == 's' \
                         or n1.get('myId')[3] == 't' and self.compare_table(n1, n2, inbuilder) \
                         or n1.get('myId')[3] == 'c' and self.compare_conditional(n1, n2, inbuilder) \
                         or n1.get('myId')[3] == 'a' and n1.get('name') == n2.get('name'):
-                # if n1.get('myId')[3] == 'r' \
-                #         or n1.get('myId')[3] == 's' \
-                #         or n1.get('myId')[3] == 't' and n1.get('name') == n2.get('name') \
-                #         or n1.get('myId')[3] == 'c' and n1.get('name') == n2.get('name') \
-                #         or n1.get('myId')[3] == 'a' and n1.get('name') == n2.get('name'):
                     not_found = False
                     if n1.get('myId') in node_mapping:
                         node_mapping[n1.get('myId')].append(n2.get('myId'))
@@ -295,8 +288,6 @@ class GraphTool:
                 if edge[1] != another[1] and edge[0]==another[0] and edge_type==another_type:
                     edge[2]['isTE'] = True
                     another[2]['isTE'] = True
-                    # g[edge[0]][edge[1]]['isTE'] = True
-                    # g[another[0]][another[1]]['isTE'] = True
                     # create a TE mapping
                     if edge[2]['color'] == 'red':
                         if (edge[0], edge[1], edge_type) not in TEs.keys():
@@ -330,7 +321,8 @@ class GraphTool:
             for j in range(len(TEs)):
                 keyi = list(TEs.keys())[i]
                 keyj = list(TEs.keys())[j]
-                if i != j and keyi[0] == keyj[0] and keyi[1] == keyj[1] and TEs[keyi][0] == TEs[keyj][0] and TEs[keyi][1] == TEs[keyj][1]:
+                if i != j and keyi[0] == keyj[0] and keyi[1] == keyj[1] and \
+                        TEs[keyi][0] == TEs[keyj][0] and TEs[keyi][1] == TEs[keyj][1]:
                     union(parent, i, j)
 
         # print (parent)
@@ -417,10 +409,8 @@ class GraphTool:
             # add a TE node
             g.add_nodes_from([("TE"+str(count_TEs), {'name':"TE"+str(count_TEs), 'color':'blue'})])
             # add the red outgoing edge
-            # red_edge_attr = g.get_edge_data(red_edge[0],red_edge[1])
             g.add_edges_from([("TE"+str(count_TEs), red_v, {'type':all_red_type, 'color':'red', 'isTE':True})])
             # add the green outgoing edge
-            # green_edge_attr = g.get_edge_data(green_edge[0],green_edge[1])
             g.add_edges_from([("TE"+str(count_TEs), green_v, {'type':all_green_type, 'color':'green', 'isTE':True})])
             # add the incomming edges
             for i in range(len(all_red_type)):
@@ -462,18 +452,28 @@ class GraphTool:
         if inbuilder.__class__.__name__ == 'GraphInputBuilder':
             return n1['name'] == n2['name']
 
+        # compare keys
         if len(n1['key']) != len(n2['key']):
-            return False
-        if len(n1['actions']) != len(n2['actions']):
             return False
         for i in range(0, len(n1['key'])):
             if n1['key'][i]['match_type'] != n2['key'][i]['match_type'] \
                 or not self.alias_check(n1['key'][i]['name'], n2['key'][i]['name']):
                 return False
+
+        # compare actions
+        if len(n1['actions']) != len(n2['actions']):
+            return False
         for i in range(0, len(n1['actions'])):
             if n1['actions'][i] != n2['actions'][i] \
                 or not self.alias_check(n1['actions'][i], n2['actions'][i]):
                 return False
+
+        # If one table has __HIT__ and __MISS__, but the other does not, they are viewed as
+        # different tables, even if everything else is the same.
+        if ('__HIT__' in n1['next_tables'] and '__HIT__' not in n2['next_tables']) or \
+           ('__HIT__' in n2['next_tables'] and '__HIT__' not in n1['next_tables']):
+           return False
+
         return True
 
     def compare_fieldValue(self, f1, f2):

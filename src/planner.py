@@ -24,7 +24,7 @@ class Planner:
         pass
 
 
-    def get_atomic_plan(self, rdg_te, sol):
+    def get_atomic_plan(self, rdg_te, sol, enable_action_next=False):
         '''Generate reconfig script for one solution
             Args:
                 rdg_te (networkx object): The MCS enhanced with TEs
@@ -65,9 +65,17 @@ class Planner:
                         out_edges = list(rdg_te.out_edges(v, data=True))
                         # assert(len(out_edges) == 1)
                         ops.append({'op_type':"tbl_insert", 'name': v, 'edge_type':'null', 'edge_value':'null'})
-                        for out_edge in out_edges:
-                            ops_edge.append({'op_type':"set_base_ptr", 'name': v, 'edge_type':out_edge[2]['type'], 'edge_value':out_edge[1]})
+                        if enable_action_next:
+                            for out_edge in out_edges:
+                                if out_edge[2]['type'] == 'b_next':
+                                    ops_edge.append({'op_type':"set_base_ptr", 'name': v, 'edge_type':out_edge[2]['type'], 'edge_value':out_edge[1]})
+                                else:
+                                    ops_edge.append({'op_type':"set_action_ptr", 'name': v, 'edge_type':out_edge[2]['type'], 'edge_value':out_edge[1]})
+                        else:
+                            for out_edge in out_edges:
+                                ops_edge.append({'op_type':"set_base_ptr", 'name': v, 'edge_type':out_edge[2]['type'], 'edge_value':out_edge[1]})
                     else:
+                        # TODO: change to raise Error
                         Logger.ERROR("The green node type is not correct.")
                         assert(0)
                 elif vcolor == 'blue':
@@ -100,10 +108,18 @@ class Planner:
                         else:
                             ops_TE_edge.append({'op_type':"set_false_ptr", 'name': in_edges[0][0], 'edge_type':'f_next', 'edge_value': v})
                             ops_post_TE.append({'op_type':"set_false_ptr", 'name': in_edges[0][0], 'edge_type':'f_next', 'edge_value': true_branch[1]})
-                    elif in_edges[0][0][0] == 't' or in_edges[0][0][0] == 'r':
+                    elif in_edges[0][0][0] == 'r':
                         for in_edge in in_edges:
                             ops_TE_edge.append({'op_type':"set_base_ptr", 'name': in_edge[0], 'edge_type':in_edge[2]['type'], 'edge_value': v})
                             ops_post_TE.append({'op_type':"set_base_ptr", 'name': in_edge[0], 'edge_type':in_edge[2]['type'], 'edge_value': true_branch[1]})
+                    elif in_edges[0][0][0] == 't':
+                        for in_edge in in_edges:
+                            if enable_action_next:
+                                ops_TE_edge.append({'op_type':"set_action_ptr", 'name': in_edge[0], 'edge_type':in_edge[2]['type'], 'edge_value': v})
+                                ops_post_TE.append({'op_type':"set_action_ptr", 'name': in_edge[0], 'edge_type':in_edge[2]['type'], 'edge_value': true_branch[1]})
+                            else:
+                                ops_TE_edge.append({'op_type':"set_base_ptr", 'name': in_edge[0], 'edge_type':in_edge[2]['type'], 'edge_value': v})
+                                ops_post_TE.append({'op_type':"set_base_ptr", 'name': in_edge[0], 'edge_type':in_edge[2]['type'], 'edge_value': true_branch[1]})
                     else:
                         Logger.ERROR("The type of previous node of TE is node correct: "+str(in_edges[0][0][0]))
                         assert(0)
@@ -233,9 +249,12 @@ class Planner:
                 if etype == 'b_next':
                     etype = "base_default_next"
                 if translate_name(name) == 'init':
-                    output += "change "+translate_name(name)+" ingress "+translate_name(evalue)+"\n"
+                    output += "change init ingress "+translate_name(evalue)+"\n"
                 else:
                     output += "change tabl ingress "+translate_name(name)+" "+etype+" "+translate_name(evalue)+"\n"
+
+            elif optype == 'set_action_ptr':
+                output += "change tabl ingress "+translate_name(name)+" "+etype+" "+translate_name(evalue)+"\n"
 
             elif optype == 'set_metadata':
                 # trigger on

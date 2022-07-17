@@ -5,6 +5,10 @@ class ProgPlanner(Planner):
     def __init__(self, inbuilder):
         super().__init__(inbuilder)
         self.inbuilder = inbuilder
+        self.enable_action_ptr = False
+
+    def set_enable_action_ptr(self, flag):
+        self.enable_action_ptr = flag
 
     def reconfig(self, rdg_o, rdg_n, dump_path):
         '''The main function of the alg
@@ -44,7 +48,7 @@ class ProgPlanner(Planner):
 
         Logger.INFO("Get a solution: "+str(M))
 
-        plan = self.get_atomic_plan(rdg_te, [M])
+        plan = self.get_atomic_plan(rdg_te, [M], self.enable_action_ptr)
         msg=""
         for step in plan:
             msg += str(step)+"\n"

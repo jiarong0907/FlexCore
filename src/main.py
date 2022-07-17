@@ -55,6 +55,13 @@ def _configure() -> argparse.Namespace:
         required=True,
         help="The path to save generated commands",
     )
+    parser.add_argument(
+        "-use_action_ptr",
+        dest="enable_action_ptr",
+        action='store_true',
+        default=False,
+        help="Enable action pointer for program consistency or not",
+    )
     return parser.parse_args()
 
 def main(args: argparse.Namespace) -> None:
@@ -66,7 +73,7 @@ def main(args: argparse.Namespace) -> None:
     planner_cls = planner_choice_mapping[args.planner]
     planner = planner_cls(input_builder)
 
-    flexcore = FlexCore(planner, args.out_path)
+    flexcore = FlexCore(planner, args.out_path, args.enable_action_ptr)
     flexcore.compute_plan()
 
 
