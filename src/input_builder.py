@@ -70,6 +70,10 @@ class JsonInputBuilder(InputBuilder):
         super().__init__(path_old, path_new)
         self.path_old = path_old
         self.path_new = path_new
+        self.enable_action_ptr = False
+
+    def set_enable_action_ptr(self, flag):
+        self.enable_action_ptr = flag
 
     def build(self):
         '''Call the alg by providing two json files, this is used for real P4 programs
@@ -99,7 +103,7 @@ class JsonInputBuilder(InputBuilder):
         Return:
             A networkx graph object.
         '''
-        return json_to_nxGraph.json_to_nxGraph(prog_path, graph_prefix)
+        return json_to_nxGraph.json_to_nxGraph(prog_path, graph_prefix, self.enable_action_ptr)
 
 
 

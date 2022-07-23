@@ -1,0 +1,40 @@
+insert flex ingress flx_TE4 null null
+insert tabl ingress new_102
+insert flex ingress flx_TE2 null null
+insert tabl ingress new_106
+insert flex ingress flx_TE3 null null
+insert tabl ingress new_103
+insert flex ingress flx_TE0 null null
+insert flex ingress flx_TE1 null null
+change flex ingress flx_TE4 true_next new_102
+change flex ingress flx_TE4 false_next old_66
+change tabl ingress new_102 base_default_next old_66
+change flex ingress flx_TE2 true_next new_106
+change flex ingress flx_TE2 false_next old_50
+change tabl ingress new_106 base_default_next old_24
+change flex ingress flx_TE3 true_next new_103
+change flex ingress flx_TE3 false_next old_85
+change tabl ingress new_103 base_default_next old_85
+change flex ingress flx_TE0 true_next old_9
+change flex ingress flx_TE0 false_next old_8
+change flex ingress flx_TE1 true_next new_106
+change flex ingress flx_TE1 false_next old_50
+change cond ingress old_95 true_next flx_TE4
+change cond ingress old_76 false_next flx_TE2
+change tabl ingress old_89 base_default_next flx_TE3
+change tabl ingress old_7 base_default_next flx_TE0
+change tabl ingress old_31 base_default_next flx_TE1
+trigger on
+change cond ingress old_95 true_next new_102
+change cond ingress old_76 false_next new_106
+change tabl ingress old_89 base_default_next new_103
+change tabl ingress old_7 base_default_next old_9
+change tabl ingress old_31 base_default_next new_106
+trigger off
+delete flex ingress flx_TE4
+delete flex ingress flx_TE2
+delete tabl ingress old_50
+delete flex ingress flx_TE3
+delete flex ingress flx_TE0
+delete tabl ingress old_8
+delete flex ingress flx_TE1

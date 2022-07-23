@@ -5,6 +5,10 @@ class ProgPlanner(Planner):
     def __init__(self, inbuilder):
         super().__init__(inbuilder)
         self.inbuilder = inbuilder
+        self.enable_action_ptr = False
+
+    def set_enable_action_ptr(self, flag):
+        self.enable_action_ptr = flag
 
     def reconfig(self, rdg_o, rdg_n, dump_path):
         '''The main function of the alg
@@ -16,9 +20,9 @@ class ProgPlanner(Planner):
         '''
 
         # Compute the MCS and color the nodes and edges
-        rdg_s = self.graph_tool.GetMCS(rdg_o, rdg_n, self.inbuilder)
+        rdg_s = self.graph_tool.get_MCS(rdg_o, rdg_n, self.inbuilder)
         # Enhance it with TEs
-        rdg_te = self.graph_tool.EnhanceWithTEs(rdg_s)
+        rdg_te = self.graph_tool.enhance_with_TEs(rdg_s)
 
         plan = self.compute(rdg_te)
         return self.get_plan_commands(plan, dump_path)
@@ -33,18 +37,19 @@ class ProgPlanner(Planner):
         '''
 
         # get all red/green/blue nodes
-        M = []
+        M = list()
         for node in rdg_te.nodes(data=True):
-            if node[1]['color'] != 'black':
-                if node not in M:
-                    M.append(node[0])
-                else:
-                    Logger.DEBUG("Found a duplicated node in the graph: "+str(node))
-                    assert(0)
+            if node[1]['color'] == 'black':
+                continue
+
+            if node not in M:
+                M.append(node[0])
+            else:
+                raise ValueError("Found a duplicated node in the graph: "+str(node))
 
         Logger.INFO("Get a solution: "+str(M))
 
-        plan = self.get_atomic_plan(rdg_te, [M])
+        plan = self.get_atomic_plan(rdg_te, [M], self.enable_action_ptr)
         msg=""
         for step in plan:
             msg += str(step)+"\n"

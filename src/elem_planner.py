@@ -17,9 +17,9 @@ class ElemPlanner(Planner):
         '''
 
         # Compute the MCS and color the nodes and edges
-        rdg_s = self.graph_tool.GetMCS(rdg_o, rdg_n, self.inbuilder)
+        rdg_s = self.graph_tool.get_MCS(rdg_o, rdg_n, self.inbuilder)
         # Enhance it with TEs
-        rdg_te = self.graph_tool.EnhanceWithTEs(rdg_s)
+        rdg_te = self.graph_tool.enhance_with_TEs(rdg_s)
 
         plan = self.compute(rdg_te)
         return self.get_plan_commands(plan, dump_path)
@@ -34,34 +34,22 @@ class ElemPlanner(Planner):
         '''
 
         # Get all red/green/blue nodes
-        M = []
+        M = list()
         for node in rdg_te.nodes(data=True):
             if node[1]['color'] != 'black':
                 if node not in M:
                     M.append(node[0])
                 else:
-                    Logger.DEBUG("Found a duplicated node in the graph: "+str(node))
-                    assert(0)
-
-        # A utility function to do union of two subsets
-        def union(parent, x, y):
-            pid = parent[x]
-            qid = parent[y]
-
-            for key in parent.keys():
-                if parent[key] == pid:
-                    parent[key] = qid
+                    raise ValueError("Found a duplicated node in the graph: "+str(node))
 
         # init the union relation
-        parent = dict()
-        for n in M:
-            parent[n] = n
+        parent = {n: n for n in M}
 
         # if two nodes in M can reach from one to another, we merge them into one group
         for i in M:
             for j in M:
                 if i != j and nx.has_path(rdg_te, source=str(i), target=str(j)):
-                    union(parent, i, j)
+                    self.union(parent, i, j)
 
         # get all groups by checking the union relation
         groups = dict()
@@ -74,7 +62,7 @@ class ElemPlanner(Planner):
         Logger.INFO("The number of groups is "+str(len(groups))+".\nThe groups are "+str(groups))
 
         sort = False
-        ordered_plan = []
+        ordered_plan = list()
         if sort:
             # TODO: add sort back
             pass
@@ -92,3 +80,12 @@ class ElemPlanner(Planner):
         msg = msg[:-1]
         Logger.CRITICAL("Its reconfig plan is : \n"+msg)
         return plan
+
+    # A utility function to do union of two subsets
+    def union(self, parent, x, y):
+        pid = parent[x]
+        qid = parent[y]
+
+        for key in parent.keys():
+            if parent[key] == pid:
+                parent[key] = qid

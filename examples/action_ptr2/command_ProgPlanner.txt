@@ -1,0 +1,26 @@
+insert tabl ingress new_MyIngress.A
+insert tabl ingress new_MyIngress.B
+insert tabl ingress new_MyIngress.C
+insert flex ingress flx_TE0 null null
+change tabl ingress new_MyIngress.A base_default_next old_MyIngress.D
+change tabl ingress new_MyIngress.A NoAction old_MyIngress.D
+change tabl ingress new_MyIngress.A MyIngress.Aa new_MyIngress.B
+change tabl ingress new_MyIngress.B base_default_next new_MyIngress.C
+change tabl ingress new_MyIngress.B MyIngress.Ba new_MyIngress.C
+change tabl ingress new_MyIngress.B NoAction new_MyIngress.C
+change tabl ingress new_MyIngress.C base_default_next old_MyIngress.D
+change tabl ingress new_MyIngress.C MyIngress.Ca old_MyIngress.D
+change tabl ingress new_MyIngress.C NoAction old_MyIngress.D
+change flex ingress flx_TE0 true_next new_MyIngress.A
+change flex ingress flx_TE0 false_next old_MyIngress.D
+change tabl ingress old_MyIngress.ipv4_lpm b_next flx_TE0
+change tabl ingress old_MyIngress.ipv4_lpm MyIngress.ipv4_forward flx_TE0
+change tabl ingress old_MyIngress.ipv4_lpm MyIngress.drop flx_TE0
+change tabl ingress old_MyIngress.ipv4_lpm NoAction flx_TE0
+trigger on
+change tabl ingress old_MyIngress.ipv4_lpm b_next new_MyIngress.A
+change tabl ingress old_MyIngress.ipv4_lpm MyIngress.ipv4_forward new_MyIngress.A
+change tabl ingress old_MyIngress.ipv4_lpm MyIngress.drop new_MyIngress.A
+change tabl ingress old_MyIngress.ipv4_lpm NoAction new_MyIngress.A
+trigger off
+delete flex ingress flx_TE0

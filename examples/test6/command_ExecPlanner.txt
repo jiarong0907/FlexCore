@@ -1,0 +1,44 @@
+insert flex ingress flx_TE4 null null
+insert flex ingress flx_TE5 null null
+insert flex ingress flx_TE2 null null
+insert flex ingress flx_TE3 null null
+insert flex ingress flx_TE6 null null
+insert flex ingress flx_TE0 null null
+insert flex ingress flx_TE1 null null
+change flex ingress flx_TE4 true_next old_A
+change flex ingress flx_TE4 false_next old_D
+change flex ingress flx_TE5 true_next old_B
+change flex ingress flx_TE5 false_next null
+change flex ingress flx_TE2 true_next null
+change flex ingress flx_TE2 false_next old_C
+change flex ingress flx_TE3 true_next old_A
+change flex ingress flx_TE3 false_next old_C
+change flex ingress flx_TE6 true_next old_C
+change flex ingress flx_TE6 false_next null
+change flex ingress flx_TE0 true_next old_D
+change flex ingress flx_TE0 false_next old_A
+change flex ingress flx_TE1 true_next null
+change flex ingress flx_TE1 false_next old_B
+change tabl ingress old_C base_default_next flx_TE4
+change cond ingress old_D true_next flx_TE5
+change cond ingress old_A false_next flx_TE2
+change tabl ingress old_B base_default_next flx_TE3
+change cond ingress old_D false_next flx_TE6
+change init ingress flx_TE0
+change cond ingress old_A true_next flx_TE1
+trigger on
+change tabl ingress old_C base_default_next old_A
+change cond ingress old_D true_next old_B
+change cond ingress old_A false_next null
+change tabl ingress old_B base_default_next old_A
+change cond ingress old_D false_next old_C
+change init ingress old_D
+change cond ingress old_A true_next null
+trigger off
+delete flex ingress flx_TE4
+delete flex ingress flx_TE5
+delete flex ingress flx_TE2
+delete flex ingress flx_TE3
+delete flex ingress flx_TE6
+delete flex ingress flx_TE0
+delete flex ingress flx_TE1

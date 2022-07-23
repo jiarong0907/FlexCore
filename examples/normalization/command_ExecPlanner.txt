@@ -1,0 +1,23 @@
+insert flex ingress flx_TE1 null null
+insert tabl ingress new_MyIngress.rsrvNorm
+change flex ingress flx_TE1 true_next new_MyIngress.rsrvNorm
+change flex ingress flx_TE1 false_next null
+change tabl ingress new_MyIngress.rsrvNorm base_default_next null
+change tabl ingress old_MyIngress.outgoingNat base_default_next flx_TE1
+trigger on
+change tabl ingress old_MyIngress.outgoingNat base_default_next new_MyIngress.rsrvNorm
+trigger off
+delete flex ingress flx_TE1
+insert flex ingress flx_TE0 null null
+insert tabl ingress new_MyIngress.ttlNorm
+insert cond ingress new_node_4
+change flex ingress flx_TE0 true_next new_node_4
+change flex ingress flx_TE0 false_next null
+change tabl ingress new_MyIngress.ttlNorm base_default_next null
+change cond ingress new_node_4 true_next new_MyIngress.ttlNorm
+change cond ingress new_node_4 false_next null
+change tabl ingress old_MyIngress.incomingNat base_default_next flx_TE0
+trigger on
+change tabl ingress old_MyIngress.incomingNat base_default_next new_node_4
+trigger off
+delete flex ingress flx_TE0
