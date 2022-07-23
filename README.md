@@ -19,7 +19,10 @@ More details can be found here:
 
 This repo serves as a tutorial on the system. It provides the setup for the BMv2-based implementation and examples for the test.
 
+## Updates
 
+***July 21, 2022*** 
+FlexCore can support using switch-case and hit/miss statements in P4 programs. The algorithm will take care of the next pointer changes. FlexCore only support program consistency of such reconfiguration so far.
 
 
 ## Setup
