@@ -13,12 +13,12 @@ change tabl ingress new_MyIngress.C MyIngress.Ca old_MyIngress.D
 change tabl ingress new_MyIngress.C NoAction old_MyIngress.D
 change flex ingress flx_TE0 true_next new_MyIngress.A
 change flex ingress flx_TE0 false_next old_MyIngress.D
-change tabl ingress old_MyIngress.ipv4_lpm b_next flx_TE0
+change tabl ingress old_MyIngress.ipv4_lpm base_default_next flx_TE0
 change tabl ingress old_MyIngress.ipv4_lpm MyIngress.ipv4_forward flx_TE0
 change tabl ingress old_MyIngress.ipv4_lpm MyIngress.drop flx_TE0
 change tabl ingress old_MyIngress.ipv4_lpm NoAction flx_TE0
 trigger on
-change tabl ingress old_MyIngress.ipv4_lpm b_next new_MyIngress.A
+change tabl ingress old_MyIngress.ipv4_lpm base_default_next new_MyIngress.A
 change tabl ingress old_MyIngress.ipv4_lpm MyIngress.ipv4_forward new_MyIngress.A
 change tabl ingress old_MyIngress.ipv4_lpm MyIngress.drop new_MyIngress.A
 change tabl ingress old_MyIngress.ipv4_lpm NoAction new_MyIngress.A

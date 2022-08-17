@@ -220,6 +220,8 @@ class Planner:
                     output += "change tabl ingress "+self.translate_name(name)+" "+etype+" "+self.translate_name(evalue)+"\n"
 
             elif optype == 'set_action_ptr':
+                if etype == 'b_next':
+                    etype = "base_default_next"
                 output += "change tabl ingress "+self.translate_name(name)+" "+etype+" "+self.translate_name(evalue)+"\n"
 
             elif optype == 'set_metadata':
