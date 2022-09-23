@@ -246,7 +246,7 @@ class Planner:
             # generate entry insertion commands
             out_json = {}
             for name in new_table_names:
-                out_json[f"{name}"] = None
+                out_json[self.remove_table_name_prefix(name)] = []
             with open(entry_file_path,'w') as f:
                 json.dump(out_json, f, indent=4)
             Logger.CRITICAL(f"Dump the plan to {command_file_path}, "
@@ -299,6 +299,12 @@ class Planner:
             return "old_"+old_name[1:]
 
         raise ValueError("Wrong old_name prefix prefix")
+
+    def remove_table_name_prefix(self, name):
+        '''Remove the _new prefix in table name for entry insertion commands
+        '''
+        assert name[:4] == "new_", f"The inserted table name must start with new_"
+        return name[4:]
 
 
 
