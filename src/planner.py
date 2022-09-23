@@ -1,6 +1,8 @@
 from abc import ABCMeta, abstractmethod
+import json
 
 import os
+from typing import List
 
 
 import Logger as Logger
@@ -146,6 +148,9 @@ class Planner:
         # suppose the TEs are all in the ingress
         output = ""
         has_trigger_on = False
+        new_table_names:List[str] = []
+        command_file_path =os.path.join(path, f"command_{self.__class__.__name__}.txt")
+        entry_file_path =os.path.join(path, f"entry_{self.__class__.__name__}.txt")
         for line in plan:
             optype  = line['op_type']
             name    = line['name']
@@ -184,6 +189,7 @@ class Planner:
             elif optype == 'tbl_insert':
                 assert(name[:3]=='g2_')
                 output += "insert tabl ingress "+self.translate_name(name)+"\n"
+                new_table_names.append(self.translate_name(name))
 
             # delete tabl ingress old_name
             elif optype == 'tbl_delete':
@@ -226,7 +232,8 @@ class Planner:
 
             elif optype == 'set_metadata':
                 # trigger on
-                output += "trigger on\n"
+                output += f"populate entry {entry_file_path}\n"
+                output += f"trigger on\n"
                 has_trigger_on = True
             else:
                 raise ValueError("Cannot handle this optype: "+str(optype))
@@ -234,11 +241,16 @@ class Planner:
         output = output[:-1]
         Logger.CRITICAL("\n"+output)
         if self.dump_cmd:
-            file_path =os.path.join(path, "command_"+self.__class__.__name__+".txt")
-            out_file = open(file_path, 'w+')
-            out_file.write(output)
-            out_file.close()
-            Logger.CRITICAL("Dump the plan to "+file_path)
+            with open(command_file_path,'w') as f:
+                f.write(output)
+            # generate entry insertion commands
+            out_json = {}
+            for name in new_table_names:
+                out_json[f"{name}"] = None
+            with open(entry_file_path,'w') as f:
+                json.dump(out_json, f, indent=4)
+            Logger.CRITICAL(f"Dump the plan to {command_file_path}, "
+                            f"entry insertion commands to {entry_file_path}")
         return output
 
     def compute_take_release(self, rdg_te, group):
